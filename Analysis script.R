@@ -6,6 +6,7 @@ library(flextable)
 library(psych)
 library(ggpubr)
 library(psych)
+library(broom)
 
 
 #### Prepare data ####
@@ -80,7 +81,7 @@ multi.hist(full[,marker_names])
 
 # qqplot
 
-ggplot(full, aes(sample = logW_saat_g_bl2)) +
+ggplot(full, aes(sample = log(crp_g_bl + 0.03))) +
   stat_qq(distribution = qnorm) + stat_qq_line(distribution = qnorm)
 
 
@@ -88,7 +89,7 @@ ggplot(full, aes(sample = logW_saat_g_bl2)) +
 
 full$crp_g_bl2 = ifelse(full$crp_g_bl < 0.001, 0.06 / sqrt(2), full$crp_g_bl)
 
-full$crp_g_fu2 = ifelse(full$crp_g_bl < 0.001, 0.06 / sqrt(2), full$crp_g_bl)
+full$crp_g_fu2 = ifelse(full$crp_g_fu < 0.001, 0.06 / sqrt(2), full$crp_g_fu)
 
 full$saat_g_bl2 <- ifelse(full$saat_g_bl < 0.001, 0.04 / sqrt(2), full$saat_g_bl)
 
@@ -146,11 +147,10 @@ full <- full %>%
 
 
 
-### Table 2. Change over time
+#### Table 2 ####
 
 
-
-
+## Baseline and follow-up means ##
 
 # median and IQR at baseline
 
@@ -194,7 +194,93 @@ print(table1, preview = "docx")
 
 
 
-## Change scores as function of follow-up time
+### Change over time ###
 
+
+# CRP
+
+full$change_CRP = full$logW_crp_g_fu2 - full$logW_crp_g_bl2
+full %>% 
+  summarise(mean = exp(mean(change_CRP,na.rm=T)),
+            sd = exp(sd(change_CRP, na.rm=T))) %>%
+  mutate(percent_change = (mean - 1) * 100) %>% 
+  select(percent_change, sd)
+
+
+# Neopterin 
+
+full$change_neopt = full$logW_neopt_d_fu - full$logW_neopt_d_bl
+
+full %>% 
+  summarise(mean = exp(mean(change_neopt,na.rm=T)),
+            sd = exp(sd(change_neopt, na.rm=T))) %>%
+  mutate(percent_change = (mean - 1) * 100) %>% 
+  select(percent_change, sd)
+
+# serum amyloid A
+
+full$change_saat = full$logW_saat_g_fu - full$logW_saat_g_bl2
+
+full %>% 
+  summarise(mean = exp(mean(change_saat,na.rm=T)),
+            sd = exp(sd(change_saat, na.rm=T))) %>%
+  mutate(percent_change = (mean - 1) * 100) %>% 
+  select(percent_change, sd)
+
+
+# interleukin 6
+
+full$change_il6 = full$logW_il6_msd_fu2 - full$logW_il6_msd_bl
+
+full %>% 
+  summarise(mean = exp(mean(change_il6,na.rm=T)),
+            sd = exp(sd(change_il6, na.rm=T))) %>%
+  mutate(percent_change = (mean - 1) * 100) %>% 
+  select(percent_change, sd)
+
+
+
+
+
+#### Table 3 ####
+
+# rescale phenoage and grimage to per 5 years
+
+full$W_AgeAccelPheno_bl5 <- full$W_AgeAccelPheno_bl / 5
+
+full$W_AgeAccelGrim_bl5 <- full$W_AgeAccelGrim_bl / 5
+
+
+# confounders
+
+full$sex_cde_bl <- as.factor(full$sex_cde_bl)
+
+levels(full$sex_cde_bl) <- c("Male","Female")
+
+
+
+## CRP models
+
+# model 1
+
+m1 <- lm(logW_crp_g_bl2 ~ W_AgeAccelGrim_bl5 + age_bl_correct +
+           cob_cde_bl + sex_cde_bl, data = full)
+
+tidy(m1, conf.int = T) %>% mutate(perc = exp(estimate) -1) %>% 
+  select(term, perc, conf.low, conf.high, p.value) %>% 
+  mutate(conf.low = exp(conf.low) - 1, conf.high = exp(conf.high) - 1)
+
+
+# model 2
+
+m2 <- lm(logW_crp_g_bl2 ~ W_AgeAccelPheno_bl5 + age_bl_correct + 
+           cob_cde_bl + sex_cde_bl + base_bmi_rrto + seifa_10_bl + 
+           as.factor(phys.act) + tot_alclw_mrt + cigst_cde + tot_alclw_mrt + 
+           logpack + educlvl_ord, data = full)
+
+
+tidy(m2, conf.int = T) %>% mutate(perc = exp(estimate) -1) %>% 
+  select(term, perc, conf.low, conf.high, p.value) %>% 
+  mutate(conf.low = exp(conf.low) -1, conf.high = exp(conf.high) -1)
 
 
