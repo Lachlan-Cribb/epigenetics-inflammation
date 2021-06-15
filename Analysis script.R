@@ -87,11 +87,11 @@ ggplot(full, aes(sample = log(crp_g_bl + 0.03))) +
 
 # replace zero's with 0.5 * limit of detection 
 
-full$crp_g_bl2 = ifelse(full$crp_g_bl < 0.001, 0.06 / sqrt(2), full$crp_g_bl)
+full$crp_g_bl2 = ifelse(full$crp_g_bl < 0.001, 0.06 / 2, full$crp_g_bl)
 
-full$crp_g_fu2 = ifelse(full$crp_g_fu < 0.001, 0.06 / sqrt(2), full$crp_g_fu)
+full$crp_g_fu2 = ifelse(full$crp_g_fu < 0.001, 0.06 / 2, full$crp_g_fu)
 
-full$saat_g_bl2 <- ifelse(full$saat_g_bl < 0.001, 0.04 / sqrt(2), full$saat_g_bl)
+full$saat_g_bl2 <- ifelse(full$saat_g_bl < 0.001, 0.04 / 2, full$saat_g_bl)
 
 full$il10_msd_bl2 <- ifelse(full$il10_msd_bl < 0.001, 0.045, full$il10_msd_bl)
 
@@ -250,6 +250,10 @@ full$W_AgeAccelPheno_bl5 <- full$W_AgeAccelPheno_bl / 5
 
 full$W_AgeAccelGrim_bl5 <- full$W_AgeAccelGrim_bl / 5
 
+full$W_AgeAccelPheno_fu5 <- full$W_AgeAccelPheno_fu / 5
+
+full$W_AgeAccelGrim_fu5 <- full$W_AgeAccelGrim_fu / 5
+
 
 # confounders
 
@@ -263,7 +267,7 @@ levels(full$sex_cde_bl) <- c("Male","Female")
 
 # model 1
 
-m1 <- lm(logW_crp_g_bl2 ~ W_AgeAccelGrim_bl5 + age_bl_correct +
+m1 <- lm(logW_crp_g_fu2 ~ W_AgeAccelGrim_fu5 + age_bl_correct +
            cob_cde_bl + sex_cde_bl, data = full)
 
 tidy(m1, conf.int = T) %>% mutate(perc = exp(estimate) -1) %>% 
@@ -273,7 +277,7 @@ tidy(m1, conf.int = T) %>% mutate(perc = exp(estimate) -1) %>%
 
 # model 2
 
-m2 <- lm(logW_crp_g_bl2 ~ W_AgeAccelPheno_bl5 + age_bl_correct + 
+m2 <- lm(logW_crp_g_fu2 ~ W_AgeAccelPheno_fu5 + age_bl_correct + 
            cob_cde_bl + sex_cde_bl + base_bmi_rrto + seifa_10_bl + 
            as.factor(phys.act) + tot_alclw_mrt + cigst_cde + tot_alclw_mrt + 
            logpack + educlvl_ord, data = full)
@@ -282,5 +286,52 @@ m2 <- lm(logW_crp_g_bl2 ~ W_AgeAccelPheno_bl5 + age_bl_correct +
 tidy(m2, conf.int = T) %>% mutate(perc = exp(estimate) -1) %>% 
   select(term, perc, conf.low, conf.high, p.value) %>% 
   mutate(conf.low = exp(conf.low) -1, conf.high = exp(conf.high) -1)
+
+
+
+
+
+
+
+
+
+#### inflammation principal components ####
+
+# select inflammation variables
+
+inflam_vars <- full %>% select(starts_with("logW")) %>% 
+  select(contains("fu"))
+
+# scree plot, PCA, extract and merge PCs to data 
+
+scree(inflam_vars)
+
+pc <- pca(inflam_vars, nfactors = 3)
+
+pc_res <- as.data.frame(predict(pc, data = inflam_vars))
+
+full3 <- cbind(full, pc_res)
+
+
+## model without PCs ##
+
+m1 <- lm(logW_crp_g_fu2 ~ W_AgeAccelGrim_fu5 + W_AgeAccelPheno_fu5 + age_bl_correct +
+           cob_cde_bl + sex_cde_bl, data = full)
+
+tidy(m1, conf.int = T) %>% mutate(percent = exp(estimate) -1) %>% 
+  select(term, percent, conf.low, conf.high, p.value) %>% 
+  mutate(conf.low = exp(conf.low) - 1, conf.high = exp(conf.high) - 1)
+
+
+## model with PCs ##
+
+m2 <- lm(RC1 ~ W_AgeAccelGrim_fu5 + W_AgeAccelPheno_fu5 + AA.Zhang +
+           cob_cde_bl + sex_cde_bl, data = full3)
+
+tidy(m2, conf.int = T) %>% mutate(percent = exp(estimate) -1) %>% 
+  select(term, percent, conf.low, conf.high, p.value) %>% 
+  mutate(conf.low = exp(conf.low) - 1, conf.high = exp(conf.high) - 1)
+
+plot_model(m2, type ="pred", terms = "W_AgeAccelGrim_fu5") + theme_bw()
 
 
