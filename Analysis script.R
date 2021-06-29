@@ -13,7 +13,6 @@ library(broom)
 
 ## read data
 
-
 bl <- read.csv("S:\\MNHS-SCS-Medicine\\PM-Users\\Lachlan\\data\\LP.BL.csv")
 
 
@@ -116,7 +115,6 @@ marker_names <- as.character(
 
 ### Log transform and winsorise biomarker variables 
 
-
 # create winsorise function
 
 winsorise <- function(x){
@@ -135,20 +133,15 @@ winsorise <- function(x){
 }
 
 
-
 # winsorise biomarkers and AA
 
-
 full <- full %>% 
-  mutate(across(marker_names, ~ log(.x), .names = "logW_{.col}")) %>% 
+  mutate(across(marker_names, ~ log2(.x), .names = "logW_{.col}")) %>% 
   mutate(across(starts_with("logW"), winsorise)) %>% 
   mutate(across(contains("ageacc"), winsorise, .names = "W_{.col}"))
 
 
-
-
 #### Table 2 ####
-
 
 ## Baseline and follow-up means ##
 
@@ -196,10 +189,10 @@ print(table1, preview = "docx")
 
 ### Change over time ###
 
-
 # CRP
 
 full$change_CRP = full$logW_crp_g_fu2 - full$logW_crp_g_bl2
+
 full %>% 
   summarise(mean = exp(mean(change_CRP,na.rm=T)),
             sd = exp(sd(change_CRP, na.rm=T))) %>%
@@ -239,21 +232,7 @@ full %>%
   select(percent_change, sd)
 
 
-
-
-
 #### Table 3 ####
-
-# rescale phenoage and grimage to per 5 years
-
-full$W_AgeAccelPheno_bl5 <- full$W_AgeAccelPheno_bl / 5
-
-full$W_AgeAccelGrim_bl5 <- full$W_AgeAccelGrim_bl / 5
-
-full$W_AgeAccelPheno_fu5 <- full$W_AgeAccelPheno_fu / 5
-
-full$W_AgeAccelGrim_fu5 <- full$W_AgeAccelGrim_fu / 5
-
 
 # confounders
 
@@ -261,32 +240,46 @@ full$sex_cde_bl <- as.factor(full$sex_cde_bl)
 
 levels(full$sex_cde_bl) <- c("Male","Female")
 
+summary(as.factor(full$cigst_cde))
 
+summary(as.factor(full$educlvl_ord))
 
 ## CRP models
 
 # model 1
 
-m1 <- lm(logW_crp_g_fu2 ~ W_AgeAccelGrim_fu5 + age_bl_correct +
-           cob_cde_bl + sex_cde_bl, data = full)
+m1 <- lm(W_AgeAccelGrim_bl ~ scale(logW_crp_g_bl2) + cob_cde_bl + sex_cde_bl + 
+           bmi_rrto + cigst_cde + educlvl_ord, data = full)
 
-tidy(m1, conf.int = T) %>% mutate(perc = exp(estimate) -1) %>% 
-  select(term, perc, conf.low, conf.high, p.value) %>% 
-  mutate(conf.low = exp(conf.low) - 1, conf.high = exp(conf.high) - 1)
+tidy(m1, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
 
+# model 2 (sensitivity analysis)
 
-# model 2
-
-m2 <- lm(logW_crp_g_fu2 ~ W_AgeAccelPheno_fu5 + age_bl_correct + 
+m2 <- lm(W_AgeAccelGrim_bl ~ scale(logW_crp_g_bl2) + age_bl_correct + 
            cob_cde_bl + sex_cde_bl + base_bmi_rrto + seifa_10_bl + 
            as.factor(phys.act) + tot_alclw_mrt + cigst_cde + tot_alclw_mrt + 
            logpack + educlvl_ord, data = full)
 
+tidy(m2, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
 
-tidy(m2, conf.int = T) %>% mutate(perc = exp(estimate) -1) %>% 
-  select(term, perc, conf.low, conf.high, p.value) %>% 
-  mutate(conf.low = exp(conf.low) -1, conf.high = exp(conf.high) -1)
 
+## Interleukin-6 
+
+# model 1
+
+m1_il6 <- lm(W_AgeAccelGrim_bl ~ scale(logW_il6_msd_bl) + cob_cde_bl + sex_cde_bl + 
+           bmi_rrto + cigst_cde + educlvl_ord, data = full)
+
+tidy(m1_il6, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
+
+# model 2 (sensitivity analysis)
+
+m2_il6 <- lm(W_AgeAccelGrim_bl ~ scale(logW_il6_msd_bl) + age_bl_correct + 
+           cob_cde_bl + sex_cde_bl + base_bmi_rrto + seifa_10_bl + 
+           as.factor(phys.act) + tot_alclw_mrt + cigst_cde + tot_alclw_mrt + 
+           logpack + educlvl_ord, data = full)
+
+tidy(m2_il6, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
 
 
 
