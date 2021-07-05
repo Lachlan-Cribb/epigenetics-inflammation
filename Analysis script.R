@@ -68,19 +68,19 @@ marker_names <- as.character(
              PAr_bl,HKXAr_bl,neopt_d_fu,crp_g_fu,cnct_g_fu,s100at_g_fu,
              saat_g_fu,il6_msd_fu,il8_msd_fu,il10_msd_fu,ifng_msd_fu,
              tnfa_msd_fu,trp_d_fu,kyn_d_fu,hk_d_fu,ka_d_fu,xa_d_fu,aa_d_fu,
-             haa_d_fu,pic_d_fu,qa_d_fu,KTr_fu,PAr_fu,HKXAr_fu))
+             haa_d_fu,pic_d_fu,qa_d_fu,KTr_fu,PAr_fu,HKXAr_fu, cysta_d_bl, cysta_d_fu))
 
 
 # histograms
 
-multi.hist(full[,marker_names])
+#multi.hist(full[,marker_names])
 
 
 ## Replacing zero values 
 
 # qqplot
 
-ggplot(full, aes(sample = log(crp_g_bl + 0.03))) +
+#ggplot(full, aes(sample = log(crp_g_bl + 0.03))) +
   stat_qq(distribution = qnorm) + stat_qq_line(distribution = qnorm)
 
 
@@ -110,7 +110,7 @@ marker_names <- as.character(
              PAr_bl,HKXAr_bl,neopt_d_fu,crp_g_fu2,cnct_g_fu,s100at_g_fu,
              saat_g_fu,il6_msd_fu2,il8_msd_fu,il10_msd_fu2,ifng_msd_fu,
              tnfa_msd_fu,trp_d_fu,kyn_d_fu,hk_d_fu,ka_d_fu,xa_d_fu,aa_d_fu,
-             haa_d_fu,pic_d_fu,qa_d_fu,KTr_fu,PAr_fu,HKXAr_fu))
+             haa_d_fu,pic_d_fu,qa_d_fu,KTr_fu,PAr_fu,HKXAr_fu, cysta_d_bl, cysta_d_fu))
 
 
 ### Log transform and winsorise biomarker variables 
@@ -193,43 +193,54 @@ print(table1, preview = "docx")
 
 full$change_CRP = full$logW_crp_g_fu2 - full$logW_crp_g_bl2
 
-full %>% 
-  summarise(mean = exp(mean(change_CRP,na.rm=T)),
-            sd = exp(sd(change_CRP, na.rm=T))) %>%
-  mutate(percent_change = (mean - 1) * 100) %>% 
-  select(percent_change, sd)
+m_crp <- lm(change_CRP ~ time_fu, data = full)
+
+tidy(m_crp, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>% 
+  mutate(conf.low = (exp(conf.low)-1) * 100, 
+         conf.high = (exp(conf.high)-1) * 100)
 
 
 # Neopterin 
 
 full$change_neopt = full$logW_neopt_d_fu - full$logW_neopt_d_bl
 
-full %>% 
-  summarise(mean = exp(mean(change_neopt,na.rm=T)),
-            sd = exp(sd(change_neopt, na.rm=T))) %>%
-  mutate(percent_change = (mean - 1) * 100) %>% 
-  select(percent_change, sd)
+m_neo <- lm(change_neopt ~ time_fu, data = full)
+
+tidy(m_neo, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>% 
+  mutate(conf.low = (exp(conf.low)-1) * 100, 
+         conf.high = (exp(conf.high)-1) * 100)
+
+# cystatin
+
+full$change_cysta = full$logW_cysta_d_fu - full$logW_cysta_d_bl
+
+m_cys <- lm(change_cysta ~ time_fu, data = full)
+
+tidy(m_cys, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>% 
+  mutate(conf.low = (exp(conf.low)-1) * 100, 
+         conf.high = (exp(conf.high)-1) * 100)
+  
 
 # serum amyloid A
 
 full$change_saat = full$logW_saat_g_fu - full$logW_saat_g_bl2
 
-full %>% 
-  summarise(mean = exp(mean(change_saat,na.rm=T)),
-            sd = exp(sd(change_saat, na.rm=T))) %>%
-  mutate(percent_change = (mean - 1) * 100) %>% 
-  select(percent_change, sd)
+m_saat <- lm(change_saat ~ time_fu, data = full)
+
+tidy(m_saat, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>% 
+  mutate(conf.low = (exp(conf.low)-1) * 100, 
+         conf.high = (exp(conf.high)-1) * 100)
 
 
 # interleukin 6
 
 full$change_il6 = full$logW_il6_msd_fu2 - full$logW_il6_msd_bl
 
-full %>% 
-  summarise(mean = exp(mean(change_il6,na.rm=T)),
-            sd = exp(sd(change_il6, na.rm=T))) %>%
-  mutate(percent_change = (mean - 1) * 100) %>% 
-  select(percent_change, sd)
+m_il6 <- lm(change_il6 ~ time_fu, data = full)
+
+tidy(m_il6, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>% 
+  mutate(conf.low = (exp(conf.low)-1) * 100, 
+         conf.high = (exp(conf.high)-1) * 100)
 
 
 #### Table 3 ####
@@ -244,23 +255,52 @@ summary(as.factor(full$cigst_cde))
 
 summary(as.factor(full$educlvl_ord))
 
-## CRP models
+### CRP models
+
+## Pheno
 
 # model 1
 
-m1 <- lm(W_AgeAccelGrim_bl ~ scale(logW_crp_g_bl2) + cob_cde_bl + sex_cde_bl + 
-           bmi_rrto + cigst_cde + educlvl_ord, data = full)
+m1 <- lm(W_AgeAccelPheno_fu ~ scale(logW_crp_g_fu2) + cob_cde_bl + sex_cde_bl + 
+           bmi_rrto + cigst_cde + educlvl_ord + age_fu_correct, data = full)
 
 tidy(m1, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
 
 # model 2 (sensitivity analysis)
 
-m2 <- lm(W_AgeAccelGrim_bl ~ scale(logW_crp_g_bl2) + age_bl_correct + 
-           cob_cde_bl + sex_cde_bl + base_bmi_rrto + seifa_10_bl + 
+m2 <- lm(W_AgeAccelPheno_fu ~ scale(logW_crp_g_fu2) + age_fu_correct + 
+           cob_cde_bl + sex_cde_bl + bmi_rrto + seifa_10_fu + 
            as.factor(phys.act) + tot_alclw_mrt + cigst_cde + tot_alclw_mrt + 
            logpack + educlvl_ord, data = full)
 
 tidy(m2, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
+
+## Grim
+
+# model 1
+
+m1 <- lm(W_AgeAccelGrim_fu ~ scale(logW_crp_g_fu2) + age_fu_correct + cob_cde_bl + 
+           sex_cde_bl + bmi_rrto + cigst_cde + educlvl_ord, data = full)
+
+tidy(m1, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
+
+# model 2 (sensitivity analysis)
+
+m2 <- lm(W_AgeAccelGrim_fu ~ scale(logW_crp_g_fu2) + age_fu_correct + 
+           cob_cde_bl + sex_cde_bl + bmi_rrto + seifa_10_fu + 
+           as.factor(phys.act) + tot_alclw_mrt + cigst_cde + tot_alclw_mrt + 
+           logpack + educlvl_ord, data = full)
+
+tidy(m2, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
+
+
+## Dunedin
+
+m1 <- lm(scale(DunedinPoAm) ~ scale(logW_crp_g_fu2) + cob_cde_bl + sex_cde_bl + 
+           bmi_rrto + cigst_cde + educlvl_ord + age_fu_correct, data = full)
+
+tidy(m1, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
+
 
 
 ## Interleukin-6 
@@ -287,44 +327,5 @@ tidy(m2_il6, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.val
 
 
 
-
-#### inflammation principal components ####
-
-# select inflammation variables
-
-inflam_vars <- full %>% select(starts_with("logW")) %>% 
-  select(contains("fu"))
-
-# scree plot, PCA, extract and merge PCs to data 
-
-scree(inflam_vars)
-
-pc <- pca(inflam_vars, nfactors = 3)
-
-pc_res <- as.data.frame(predict(pc, data = inflam_vars))
-
-full3 <- cbind(full, pc_res)
-
-
-## model without PCs ##
-
-m1 <- lm(logW_crp_g_fu2 ~ W_AgeAccelGrim_fu5 + W_AgeAccelPheno_fu5 + age_bl_correct +
-           cob_cde_bl + sex_cde_bl, data = full)
-
-tidy(m1, conf.int = T) %>% mutate(percent = exp(estimate) -1) %>% 
-  select(term, percent, conf.low, conf.high, p.value) %>% 
-  mutate(conf.low = exp(conf.low) - 1, conf.high = exp(conf.high) - 1)
-
-
-## model with PCs ##
-
-m2 <- lm(RC1 ~ W_AgeAccelGrim_fu5 + W_AgeAccelPheno_fu5 + AA.Zhang +
-           cob_cde_bl + sex_cde_bl, data = full3)
-
-tidy(m2, conf.int = T) %>% mutate(percent = exp(estimate) -1) %>% 
-  select(term, percent, conf.low, conf.high, p.value) %>% 
-  mutate(conf.low = exp(conf.low) - 1, conf.high = exp(conf.high) - 1)
-
-plot_model(m2, type ="pred", terms = "W_AgeAccelGrim_fu5") + theme_bw()
 
 
