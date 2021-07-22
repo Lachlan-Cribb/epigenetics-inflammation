@@ -7,6 +7,7 @@ library(psych)
 library(ggpubr)
 library(psych)
 library(broom)
+library(car)
 
 
 #### Prepare data ####
@@ -56,8 +57,26 @@ full <- full %>% mutate(time_fu = age_fu_correct - age_bl_correct)
 hist(full$time_fu, breaks = 50) # minimum of 9 years 
 
 
-### Check distributions of biomarkers to ensure no errors
+#### Table 1 demographics ####
 
+psych::describe(full$age_fu_correct)
+
+full %>% group_by(sex_cde_bl) %>% tally() %>% mutate(percent = n/sum(n) * 100)
+
+psych::describe(full$bmi_rrto)
+
+full %>% group_by(cob_cde_bl) %>% tally() %>% mutate(percent = n/sum(n) * 100)
+
+full %>% group_by(sample_type) %>% tally() %>% mutate(percent = n/sum(n) * 100)
+
+full %>% group_by(educlvl_ord) %>% tally() %>% mutate(percent = n/sum(n) * 100)
+
+full %>% group_by(cigst_cde) %>% tally() %>% mutate(percent = n/sum(n) * 100)
+
+full <- full %>% mutate(packyears = if_else(logpack > 0, exp(logpack), 0))
+
+
+#### process biomarkers ####
 
 # vector of all biomarker names
 
@@ -138,7 +157,11 @@ winsorise <- function(x){
 full <- full %>% 
   mutate(across(marker_names, ~ log2(.x), .names = "logW_{.col}")) %>% 
   mutate(across(starts_with("logW"), winsorise)) %>% 
-  mutate(across(contains("ageacc"), winsorise, .names = "W_{.col}"))
+  mutate(across(contains("ageacc"), winsorise, .names = "W_{.col}")) %>% 
+  mutate(across(c("AA.Zhang","AA.DunedinPoAm"), winsorise, .names = "W_{.col}"))
+
+## calculate inflammaging signature
+
 
 
 #### Table 2 ####
@@ -185,9 +208,7 @@ table1 <- flextable(res)
 
 print(table1, preview = "docx")
 
-
-
-### Change over time ###
+### Change over time) ###
 
 # CRP
 
@@ -199,6 +220,7 @@ tidy(m_crp, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>%
   mutate(conf.low = (exp(conf.low)-1) * 100, 
          conf.high = (exp(conf.high)-1) * 100)
 
+crPlots(m_crp)
 
 # Neopterin 
 
@@ -210,6 +232,8 @@ tidy(m_neo, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>%
   mutate(conf.low = (exp(conf.low)-1) * 100, 
          conf.high = (exp(conf.high)-1) * 100)
 
+crPlots(m_neo)
+
 # cystatin
 
 full$change_cysta = full$logW_cysta_d_fu - full$logW_cysta_d_bl
@@ -219,7 +243,8 @@ m_cys <- lm(change_cysta ~ time_fu, data = full)
 tidy(m_cys, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>% 
   mutate(conf.low = (exp(conf.low)-1) * 100, 
          conf.high = (exp(conf.high)-1) * 100)
-  
+
+crPlots(m_cys)
 
 # serum amyloid A
 
@@ -231,6 +256,7 @@ tidy(m_saat, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>%
   mutate(conf.low = (exp(conf.low)-1) * 100, 
          conf.high = (exp(conf.high)-1) * 100)
 
+crPlots(m_saat)
 
 # interleukin 6
 
@@ -241,6 +267,85 @@ m_il6 <- lm(change_il6 ~ time_fu, data = full)
 tidy(m_il6, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>% 
   mutate(conf.low = (exp(conf.low)-1) * 100, 
          conf.high = (exp(conf.high)-1) * 100)
+
+crPlots(m_il6)
+
+#### Figure 1 ####
+
+library(knitr)
+
+cor_dat <- full %>% 
+  select(starts_with("logW")) %>% 
+  select(ends_with("fu"), ends_with("fu2"))
+
+
+cors_spearman <- function(df) { 
+  M <- Hmisc::rcorr(as.matrix(df), type = "spearman")
+  Mdf <- map(M, ~data.frame(.x))
+}
+
+plot_data <- cors_spearman(cor_dat) %>%
+  map(~rownames_to_column(.x, var="measure1")) %>%
+  map(~pivot_longer(.x, -measure1, "measure2")) %>%
+  bind_rows(.id = "id") %>%
+  pivot_wider(names_from = id, values_from = value) %>% 
+  mutate(across(c("measure1","measure2"), str_replace, "logW_", "")) %>% 
+  mutate(measure1 = sub("_.*", "", plot_data$measure1)) %>% 
+  mutate(measure2 = sub("_.*", "", plot_data$measure2)) %>% 
+  mutate(across(contains("measure"), str_to_upper))
+
+plot_data %>%
+  ggplot(aes(measure1, measure2, fill=r, label=round(r,2))) +
+  geom_tile() +
+  labs(x = NULL, y = NULL, fill = "Spearman's\nCorrelation") + 
+  scale_fill_gradient2(mid="#FBFEF9",low="#0C6291",high="#A63446", limits=c(-1,1)) +
+  geom_text(size =2.5) +
+  theme_classic() +
+  scale_x_discrete(expand=c(0,0)) +
+  scale_y_discrete(expand=c(0,0)) +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggsave("correlation heatmap.png", device = "png", dpi = 450)
+
+#### figure 2 ####
+
+aa_dat <- full %>% 
+  select(starts_with("W_")) %>% 
+  select(W_AA.Zhang, W_AA.DunedinPoAm, W_AgeAccelGrim_bl, W_AgeAccelGrim_fu, 
+         W_AgeAccelPheno_bl, W_AgeAccelPheno_fu)
+
+cors <- function(df) { 
+  M <- Hmisc::rcorr(as.matrix(df))
+  Mdf <- map(M, ~data.frame(.x))
+}
+
+aa_data <- cors(aa_dat) %>%
+  map(~rownames_to_column(.x, var="measure1")) %>%
+  map(~pivot_longer(.x, -measure1, "measure2")) %>%
+  bind_rows(.id = "id") %>%
+  pivot_wider(names_from = id, values_from = value) %>% 
+  mutate(across(contains("measure"), recode, 
+                W_AA.Zhang = "Zhang AA", 
+                W_AA.DunedinPoAm = "DunedinPoAm AA",
+                W_AgeAccelGrim_bl = "BL GrimAge AA",
+                W_AgeAccelGrim_fu = "FU GrimAge AA",
+                W_AgeAccelPheno_bl = "BL PhenoAge AA",
+                W_AgeAccelPheno_fu = "FU PhenoAge AA"))
+
+aa_data %>%
+  ggplot(aes(measure1, measure2, fill=r, label=round(r,2))) +
+  geom_tile() +
+  labs(x = NULL, y = NULL, fill = "Pearson's\nCorrelation") + 
+  scale_fill_gradient2(mid="#FBFEF9",low="#0C6291",high="#A63446", limits=c(-1,1)) +
+  geom_text(size =3) +
+  theme_classic() +
+  scale_x_discrete(expand=c(0,0)) +
+  scale_y_discrete(expand=c(0,0)) +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggsave("AA heatmap.png", device = "png", dpi = 300)
+
+
 
 
 #### Table 3 ####
@@ -266,6 +371,9 @@ m1 <- lm(W_AgeAccelPheno_fu ~ scale(logW_crp_g_fu2) + cob_cde_bl + sex_cde_bl +
 
 tidy(m1, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
 
+crPlots(m1,~ scale(logW_crp_g_fu2))
+
+
 # model 2 (sensitivity analysis)
 
 m2 <- lm(W_AgeAccelPheno_fu ~ scale(logW_crp_g_fu2) + age_fu_correct + 
@@ -284,6 +392,8 @@ m1 <- lm(W_AgeAccelGrim_fu ~ scale(logW_crp_g_fu2) + age_fu_correct + cob_cde_bl
 
 tidy(m1, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
 
+crPlots(m1,~ scale(logW_crp_g_fu2))
+
 # model 2 (sensitivity analysis)
 
 m2 <- lm(W_AgeAccelGrim_fu ~ scale(logW_crp_g_fu2) + age_fu_correct + 
@@ -295,13 +405,42 @@ tidy(m2, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
 
 
 ## Dunedin
+# model 1
 
-m1 <- lm(scale(DunedinPoAm) ~ scale(logW_crp_g_fu2) + cob_cde_bl + sex_cde_bl + 
+m1 <- lm(scale(W_AA.DunedinPoAm) ~ scale(logW_crp_g_fu2) + cob_cde_bl + sex_cde_bl + 
            bmi_rrto + cigst_cde + educlvl_ord + age_fu_correct, data = full)
 
 tidy(m1, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
 
+crPlots(m1,~ scale(logW_crp_g_fu2))
 
+# model 2 
+
+m2 <- lm(scale(W_AA.DunedinPoAm) ~ scale(logW_crp_g_fu2) + age_fu_correct + 
+           cob_cde_bl + sex_cde_bl + bmi_rrto + seifa_10_fu + 
+           as.factor(phys.act) + tot_alclw_mrt + cigst_cde + tot_alclw_mrt + 
+           logpack + educlvl_ord, data = full)
+
+tidy(m2, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
+
+## Zhang
+# model 1
+
+m1 <- lm(W_AA.Zhang ~ scale(logW_crp_g_fu2) + cob_cde_bl + sex_cde_bl + 
+           bmi_rrto + cigst_cde + educlvl_ord + age_fu_correct, data = full)
+
+tidy(m1, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
+
+crPlots(m1,~ scale(logW_crp_g_fu2))
+
+# model 2 
+
+m2 <- lm(W_AA.Zhang ~ scale(logW_crp_g_fu2) + age_fu_correct + 
+           cob_cde_bl + sex_cde_bl + bmi_rrto + seifa_10_fu + 
+           as.factor(phys.act) + tot_alclw_mrt + cigst_cde + tot_alclw_mrt + 
+           logpack + educlvl_ord, data = full)
+
+tidy(m2, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.value)
 
 ## Interleukin-6 
 
@@ -323,9 +462,14 @@ tidy(m2_il6, conf.int = T) %>% select(term, estimate, conf.low, conf.high, p.val
 
 
 
+### R squared analysis 
 
+trim <- full %>% select(starts_with("logW"), W_AgeAccelGrim_fu, age_fu_correct, cob_cde_bl, sex_cde_bl, bmi_rrto, educlvl_ord) %>% 
+  select(ends_with("fu"), ends_with("fu2"), W_AgeAccelGrim_fu, age_fu_correct, cob_cde_bl, sex_cde_bl, bmi_rrto, educlvl_ord)
 
+m1 <- lm(W_AgeAccelGrim_fu ~ age_fu_correct + cob_cde_bl + sex_cde_bl + bmi_rrto + educlvl_ord, data = trim)
+m2 <- lm(W_AgeAccelGrim_fu ~ ., data = trim)
 
+summary(m1)
 
-
-
+summary(m2)
