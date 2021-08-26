@@ -10,7 +10,6 @@ library(ggthemes)
 library(knitr)
 library(car)
 
-
 #### Prepare data ####
 
 ### read data
@@ -124,7 +123,7 @@ full <- full %>% mutate(packyears_bl = if_else(logpack_bl > 0, exp(logpack_bl) /
 hist(full$packyears_bl, breaks = 50)
 
 full %>% filter(packyears_bl > 0) %>% summarise(median = median(packyears_bl),
-                                           IQR = IQR(packyears_bl))
+                                                IQR = IQR(packyears_bl))
 
 full %>% summarise(median = median(seifa_10_bl,na.rm=T), 
                    IQR = IQR(seifa_10_bl,na.rm=T))
@@ -317,7 +316,9 @@ full %>% select(contains("inflamm")) %>% multi.hist()
 # winsorise inflammaging variables
 
 full <- full %>% 
-  mutate(across(contains("inflamm"), winsorise, .names = "w{.col}"))
+  mutate(across(contains("inflamm"), winsorise, .names = "w{.col}")) %>% 
+  mutate(across(contains("winflamm"), scale, .names = "z{.col}"))
+
 
 #### Table 2 ####
 
@@ -674,38 +675,1197 @@ tidy(m8, conf.int = T) %>%
   mutate(clock = "dunedin") %>% 
   filter(str_detect(term, "zwlog")) -> m8_res
 
+## cystatin-C
+
+# Pheno
+
+m9 <- lm(zwAgeAccelPheno_fu ~ zwlog_cnct_g_imp_fu + cob_cde_fu + sex_cde_fu + 
+           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+         data = full)
+
+crPlots(m9, terms = "zwlog_cnct_g_imp_fu")
+
+tidy(m9, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m9_res
+
+# grim
+
+m10 <- lm(zwAgeAccelGrim_fu ~ zwlog_cnct_g_imp_fu + cob_cde_fu + sex_cde_fu + 
+           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+         data = full)
+
+crPlots(m10, terms = "zwlog_cnct_g_imp_fu")
+
+tidy(m10, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m10_res
+
+# Zhang
+
+m11 <- lm(zwAA.Zhang.cont_fu ~ zwlog_cnct_g_imp_fu + cob_cde_fu + sex_cde_fu + 
+           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+         data = full)
+
+crPlots(m11, terms = "zwlog_cnct_g_imp_fu")
+
+tidy(m11, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m11_res
+
+# Dunedin 
+
+m12 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_cnct_g_imp_fu + cob_cde_fu + sex_cde_fu + 
+           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+         data = full)
+
+crPlots(m12, terms = "zwlog_cnct_g_imp_fu")
+
+tidy(m12, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m12_res
+
+## Serum amyloid A
+
+# Pheno
+
+m13 <- lm(zwAgeAccelPheno_fu ~ zwlog_saat_g_imp_fu + cob_cde_fu + sex_cde_fu + 
+           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+         data = full)
+
+crPlots(m13, terms = "zwlog_saat_g_imp_fu")
+
+tidy(m13, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m13_res
+
+# grim
+
+m14 <- lm(zwAgeAccelGrim_fu ~ zwlog_saat_g_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m14, terms = "zwlog_saat_g_imp_fu")
+
+tidy(m14, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m14_res
+
+# Zhang
+
+m15 <- lm(zwAA.Zhang.cont_fu ~ zwlog_saat_g_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m15, terms = "zwlog_saat_g_imp_fu")
+
+tidy(m15, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m15_res
+
+# Dunedin 
+
+m16 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_saat_g_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m16, terms = "zwlog_saat_g_imp_fu")
+
+tidy(m16, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m16_res
+
+## calprotectin
+
+hist(full$zwlog_s100at_g_imp_fu)
+
+# Pheno
+
+m17 <- lm(zwAgeAccelPheno_fu ~ zwlog_s100at_g_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m17, terms = "zwlog_s100at_g_imp_fu")
+
+tidy(m17, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m17_res
+
+# grim
+
+m18 <- lm(zwAgeAccelGrim_fu ~ zwlog_s100at_g_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m18, terms = "zwlog_s100at_g_imp_fu")
+
+tidy(m18, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m18_res
+
+# Zhang
+
+m19 <- lm(zwAA.Zhang.cont_fu ~ zwlog_s100at_g_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m19, terms = "zwlog_s100at_g_imp_fu")
+
+tidy(m19, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m19_res
+
+# Dunedin 
+
+m20 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_s100at_g_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m20, terms = "zwlog_s100at_g_imp_fu")
+
+tidy(m20, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m20_res
 
 
+## interleukin 6
 
+# Pheno
+
+m21 <- lm(zwAgeAccelPheno_fu ~ zwlog_il6_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m21, terms = "zwlog_il6_msd_imp_fu2")
+
+tidy(m21, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m21_res
+
+# grim
+
+m22 <- lm(zwAgeAccelGrim_fu ~ zwlog_il6_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m22, terms = "zwlog_il6_msd_imp_fu2")
+
+tidy(m22, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m22_res
+
+# Zhang
+
+m23 <- lm(zwAA.Zhang.cont_fu ~ zwlog_il6_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m23, terms = "zwlog_il6_msd_imp_fu2")
+
+tidy(m23, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m23_res
+
+# Dunedin 
+
+m24 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_il6_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m24, terms = "zwlog_il6_msd_imp_fu2")
+
+tidy(m24, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m24_res
+
+## interleukin 8
+
+# Pheno
+
+m25 <- lm(zwAgeAccelPheno_fu ~ zwlog_il8_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m25, terms = "zwlog_il8_msd_imp_fu")
+
+tidy(m25, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m25_res
+
+# grim
+
+m26 <- lm(zwAgeAccelGrim_fu ~ zwlog_il8_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m26, terms = "zwlog_il8_msd_imp_fu")
+
+tidy(m26, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m26_res
+
+# Zhang
+
+m27 <- lm(zwAA.Zhang.cont_fu ~ zwlog_il8_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m27, terms = "zwlog_il8_msd_imp_fu")
+
+tidy(m27, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m27_res
+
+# Dunedin 
+
+m28 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_il8_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m28, terms = "zwlog_il8_msd_imp_fu")
+
+tidy(m28, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m28_res
+
+## interleukin 10
+
+# Pheno
+
+m29 <- lm(zwAgeAccelPheno_fu ~ zwlog_il10_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m29, terms = "zwlog_il10_msd_imp_fu2")
+
+tidy(m29, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m29_res
+
+# grim
+
+m30 <- lm(zwAgeAccelGrim_fu ~ zwlog_il10_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m30, terms = "zwlog_il10_msd_imp_fu2")
+
+tidy(m30, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m30_res
+
+# Zhang
+
+m31 <- lm(zwAA.Zhang.cont_fu ~ zwlog_il10_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m31, terms = "zwlog_il10_msd_imp_fu2")
+
+tidy(m31, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m31_res
+
+# Dunedin 
+
+m32 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_il10_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m32, terms = "zwlog_il10_msd_imp_fu2")
+
+tidy(m32, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m32_res
+
+## Interferon-gamma
+
+# Pheno
+
+m33 <- lm(zwAgeAccelPheno_fu ~ zwlog_ifng_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m33, terms = "zwlog_ifng_msd_imp_fu")
+
+tidy(m33, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m33_res
+
+# grim
+
+m34 <- lm(zwAgeAccelGrim_fu ~ zwlog_ifng_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m34, terms = "zwlog_ifng_msd_imp_fu")
+
+tidy(m34, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m34_res
+
+# Zhang
+
+m35 <- lm(zwAA.Zhang.cont_fu ~ zwlog_ifng_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m35, terms = "zwlog_ifng_msd_imp_fu")
+
+tidy(m35, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m35_res
+
+# Dunedin 
+
+m36 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_ifng_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m36, terms = "zwlog_ifng_msd_imp_fu")
+
+tidy(m36, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m36_res
+
+## TNF-a
+hist(full$zwlog_tnfa_msd_imp_fu)
+# Pheno
+
+m37 <- lm(zwAgeAccelPheno_fu ~ zwlog_tnfa_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m37, terms = "zwlog_tnfa_msd_imp_fu")
+
+tidy(m37, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m37_res
+
+# grim
+
+m38 <- lm(zwAgeAccelGrim_fu ~ zwlog_tnfa_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m38, terms = "zwlog_tnfa_msd_imp_fu")
+
+tidy(m38, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m38_res
+
+# Zhang
+
+m39 <- lm(zwAA.Zhang.cont_fu ~ zwlog_tnfa_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m39, terms = "zwlog_tnfa_msd_imp_fu")
+
+tidy(m39, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m39_res
+
+# Dunedin 
+
+m40 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_tnfa_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m40, terms = "zwlog_tnfa_msd_imp_fu")
+
+tidy(m40, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m40_res
+
+## tryptophan
+
+hist(full$zwlog_trp_d_imp_fu)
+
+# Pheno
+
+m41 <- lm(zwAgeAccelPheno_fu ~ zwlog_trp_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m41, terms = "zwlog_trp_d_imp_fu")
+
+tidy(m41, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m41_res
+
+# grim
+
+m42 <- lm(zwAgeAccelGrim_fu ~ zwlog_trp_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m42, terms = "zwlog_trp_d_imp_fu")
+
+tidy(m42, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m42_res
+
+# Zhang
+
+m43 <- lm(zwAA.Zhang.cont_fu ~ zwlog_trp_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m43, terms = "zwlog_trp_d_imp_fu")
+
+tidy(m43, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m43_res
+
+# Dunedin 
+
+m44 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_trp_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m44, terms = "zwlog_trp_d_imp_fu")
+
+tidy(m44, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m44_res
+
+
+## Kynurenine 
+
+hist(full$zwlog_kyn_d_imp_fu)
+
+# Pheno
+
+m45 <- lm(zwAgeAccelPheno_fu ~ zwlog_kyn_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m45, terms = "zwlog_kyn_d_imp_fu")
+
+tidy(m45, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m45_res
+
+# grim
+
+m46 <- lm(zwAgeAccelGrim_fu ~ zwlog_kyn_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m46, terms = "zwlog_kyn_d_imp_fu")
+
+tidy(m46, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m46_res
+
+# Zhang
+
+m47 <- lm(zwAA.Zhang.cont_fu ~ zwlog_kyn_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m47, terms = "zwlog_kyn_d_imp_fu")
+
+tidy(m47, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m47_res
+
+# Dunedin 
+
+m48 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_kyn_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m48, terms = "zwlog_kyn_d_imp_fu")
+
+tidy(m48, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m48_res
+
+## 3 hydroxykynurenine
+
+hist(full$zwlog_hk_d_imp_fu)
+
+# Pheno
+
+m49 <- lm(zwAgeAccelPheno_fu ~ zwlog_hk_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m49, terms = "zwlog_hk_d_imp_fu")
+
+tidy(m49, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m49_res
+
+# grim
+
+m50 <- lm(zwAgeAccelGrim_fu ~ zwlog_hk_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m50, terms = "zwlog_hk_d_imp_fu")
+
+tidy(m50, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m50_res
+
+# Zhang
+
+m51 <- lm(zwAA.Zhang.cont_fu ~ zwlog_hk_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m51, terms = "zwlog_hk_d_imp_fu")
+
+tidy(m51, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m51_res
+
+# Dunedin 
+
+m52 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_hk_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m52, terms = "zwlog_hk_d_imp_fu")
+
+tidy(m52, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m52_res
+
+
+## Kynurenic acid
+
+hist(full$zwlog_ka_d_imp_fu)
+
+
+# Pheno
+
+m53 <- lm(zwAgeAccelPheno_fu ~ zwlog_ka_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m53, terms = "zwlog_ka_d_imp_fu")
+
+tidy(m53, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m53_res
+
+# grim
+
+m54 <- lm(zwAgeAccelGrim_fu ~ zwlog_ka_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m54, terms = "zwlog_ka_d_imp_fu")
+
+tidy(m54, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m54_res
+
+# Zhang
+
+m55 <- lm(zwAA.Zhang.cont_fu ~ zwlog_ka_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m55, terms = "zwlog_ka_d_imp_fu")
+
+tidy(m55, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m55_res
+
+# Dunedin 
+
+m56 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_ka_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m56, terms = "zwlog_ka_d_imp_fu")
+
+tidy(m56, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m56_res
+
+
+## Xanthurenic acid
+
+hist(full$zwlog_xa_d_imp_fu)
+
+# Pheno
+
+m57 <- lm(zwAgeAccelPheno_fu ~ zwlog_xa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m57, terms = "zwlog_xa_d_imp_fu")
+
+tidy(m57, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m57_res
+
+# grim
+
+m58 <- lm(zwAgeAccelGrim_fu ~ zwlog_xa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m58, terms = "zwlog_xa_d_imp_fu")
+
+tidy(m58, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m58_res
+
+# Zhang
+
+m59 <- lm(zwAA.Zhang.cont_fu ~ zwlog_xa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m59, terms = "zwlog_xa_d_imp_fu")
+
+tidy(m59, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m59_res
+
+# Dunedin 
+
+m60 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_xa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m60, terms = "zwlog_xa_d_imp_fu")
+
+tidy(m60, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m60_res
+
+
+## Anthranilic acid
+
+hist(full$zwlog_aa_d_imp_fu)
+
+# Pheno
+
+m61 <- lm(zwAgeAccelPheno_fu ~ zwlog_aa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m61, terms = "zwlog_aa_d_imp_fu")
+
+tidy(m61, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m61_res
+
+# grim
+
+m62 <- lm(zwAgeAccelGrim_fu ~ zwlog_aa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m62, terms = "zwlog_aa_d_imp_fu")
+
+tidy(m62, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m62_res
+
+# Zhang
+
+m63 <- lm(zwAA.Zhang.cont_fu ~ zwlog_aa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m63, terms = "zwlog_aa_d_imp_fu")
+
+tidy(m63, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m63_res
+
+# Dunedin 
+
+m64 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_aa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m64, terms = "zwlog_aa_d_imp_fu")
+
+tidy(m64, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m64_res
+
+
+## 3-hydroxyanthranilic acid
+
+hist(full$zwlog_haa_d_imp_fu)
+
+# Pheno
+
+m65 <- lm(zwAgeAccelPheno_fu ~ zwlog_haa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m65, terms = "zwlog_haa_d_imp_fu")
+
+tidy(m65, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m65_res
+
+# grim
+
+m66 <- lm(zwAgeAccelGrim_fu ~ zwlog_haa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m66, terms = "zwlog_haa_d_imp_fu")
+
+tidy(m66, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m66_res
+
+# Zhang
+
+m67 <- lm(zwAA.Zhang.cont_fu ~ zwlog_haa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m67, terms = "zwlog_haa_d_imp_fu")
+
+tidy(m67, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m67_res
+
+# Dunedin 
+
+m68 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_haa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m68, terms = "zwlog_haa_d_imp_fu")
+
+tidy(m68, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m68_res
+
+## Picolinic acid
+
+hist(full$zwlog_pic_d_imp_fu)
+
+
+# Pheno
+
+m69 <- lm(zwAgeAccelPheno_fu ~ zwlog_pic_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m69, terms = "zwlog_pic_d_imp_fu")
+
+tidy(m69, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m69_res
+
+# grim
+
+m70 <- lm(zwAgeAccelGrim_fu ~ zwlog_pic_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m70, terms = "zwlog_pic_d_imp_fu")
+
+tidy(m70, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m70_res
+
+# Zhang
+
+m71 <- lm(zwAA.Zhang.cont_fu ~ zwlog_pic_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m71, terms = "zwlog_pic_d_imp_fu")
+
+tidy(m71, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m71_res
+
+# Dunedin 
+
+m72 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_pic_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m72, terms = "zwlog_pic_d_imp_fu")
+
+tidy(m72, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m72_res
+
+
+## Quinolinic acid
+
+hist(full$zwlog_qa_d_imp_fu)
+
+# Pheno
+
+m73 <- lm(zwAgeAccelPheno_fu ~ zwlog_qa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m73, terms = "zwlog_qa_d_imp_fu")
+
+tidy(m73, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m73_res
+
+# grim
+
+m74 <- lm(zwAgeAccelGrim_fu ~ zwlog_qa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m74, terms = "zwlog_qa_d_imp_fu")
+
+tidy(m74, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m74_res
+
+# Zhang
+
+m75 <- lm(zwAA.Zhang.cont_fu ~ zwlog_qa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m75, terms = "zwlog_qa_d_imp_fu")
+
+tidy(m75, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m75_res
+
+# Dunedin 
+
+m76 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_qa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m76, terms = "zwlog_qa_d_imp_fu")
+
+tidy(m76, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m76_res
+
+## KTR 
+
+hist(full$zwlog_KTr_imp_fu)
+
+# Pheno
+
+m77 <- lm(zwAgeAccelPheno_fu ~ zwlog_KTr_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m77, terms = "zwlog_KTr_imp_fu")
+
+tidy(m77, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m77_res
+
+# grim
+
+m78 <- lm(zwAgeAccelGrim_fu ~ zwlog_KTr_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m78, terms = "zwlog_KTr_imp_fu")
+
+tidy(m78, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m78_res
+
+# Zhang
+
+m79 <- lm(zwAA.Zhang.cont_fu ~ zwlog_KTr_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m79, terms = "zwlog_KTr_imp_fu")
+
+tidy(m79, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m79_res
+
+# Dunedin 
+
+m80 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_KTr_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m80, terms = "zwlog_KTr_imp_fu")
+
+tidy(m80, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m80_res
+
+
+## PAr index 
+
+hist(full$zwlog_PAr_imp_fu)
+
+# Pheno
+
+m81 <- lm(zwAgeAccelPheno_fu ~ zwlog_PAr_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m81, terms = "zwlog_PAr_imp_fu")
+
+tidy(m81, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m81_res
+
+# grim
+
+m82 <- lm(zwAgeAccelGrim_fu ~ zwlog_PAr_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m82, terms = "zwlog_PAr_imp_fu")
+
+tidy(m82, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m82_res
+
+# Zhang
+
+m83 <- lm(zwAA.Zhang.cont_fu ~ zwlog_PAr_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m83, terms = "zwlog_PAr_imp_fu")
+
+tidy(m83, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m83_res
+
+# Dunedin 
+
+m84 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_PAr_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m84, terms = "zwlog_PAr_imp_fu")
+
+tidy(m84, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m84_res
+
+
+## HK:Xa
+
+hist(full$zwlog_HKXAr_imp_fu)
+
+# Pheno
+
+m85 <- lm(zwAgeAccelPheno_fu ~ zwlog_HKXAr_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m85, terms = "zwlog_HKXAr_imp_fu")
+
+tidy(m85, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zwlog")) -> m85_res
+
+# grim
+
+m86 <- lm(zwAgeAccelGrim_fu ~ zwlog_HKXAr_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m86, terms = "zwlog_HKXAr_imp_fu")
+
+tidy(m86, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zwlog")) -> m86_res
+
+# Zhang
+
+m87 <- lm(zwAA.Zhang.cont_fu ~ zwlog_HKXAr_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m87, terms = "zwlog_HKXAr_imp_fu")
+
+tidy(m87, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zwlog")) -> m87_res
+
+# Dunedin 
+
+m88 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_HKXAr_imp_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m88, terms = "zwlog_HKXAr_imp_fu")
+
+tidy(m88, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zwlog")) -> m88_res
+
+
+## inflammaging
+
+hist(full$zwinflamm_sig_fu)
+
+# Pheno
+
+m89 <- lm(zwAgeAccelPheno_fu ~ zwinflamm_sig_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m89, terms = "zwinflamm_sig_fu")
+
+tidy(m89, conf.int = T) %>% 
+  mutate(clock = "pheno") %>% 
+  filter(str_detect(term, "zw")) -> m89_res
+
+# grim
+
+m90 <- lm(zwAgeAccelGrim_fu ~ zwinflamm_sig_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m90, terms = "zwinflamm_sig_fu")
+
+tidy(m90, conf.int = T) %>% 
+  mutate(clock = "grim") %>% 
+  filter(str_detect(term, "zw")) -> m90_res
+
+# Zhang
+
+m91 <- lm(zwAA.Zhang.cont_fu ~ zwinflamm_sig_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m91, terms = "zwinflamm_sig_fu")
+
+tidy(m91, conf.int = T) %>% 
+  mutate(clock = "zhang") %>% 
+  filter(str_detect(term, "zw")) -> m91_res
+
+# Dunedin 
+
+m92 <- lm(zwAA.DunedinPoAm_fu ~ zwinflamm_sig_fu + cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
+          data = full)
+
+crPlots(m92, terms = "zwinflamm_sig_fu")
+
+tidy(m92, conf.int = T) %>% 
+  mutate(clock = "dunedin") %>% 
+  filter(str_detect(term, "zw")) -> m92_res
 
 
 #### Forest plot ####
 
-plot_data <- rbind(crp_res, cys_res, il6_res, saat_res)
+plot_data <- mget(ls(pattern="_res")) %>%
+  bind_rows() %>% 
+  filter(!is.na(term)) %>% 
+  select(term, estimate, std.error, statistic, p.value, conf.low, conf.high, clock)
 
-plot_data <- plot_data %>% mutate(term = gsub("\\(|\\)","",term)) %>% 
-  mutate(term = sub("scalelogW_", "", term)) %>% 
-  mutate(term = gsub("_.*$", "", term)) %>% 
+head(plot_data)
+
+plot_data <- plot_data %>% 
+  mutate(term = str_replace(term, "zwlog_", "")) %>% 
+  mutate(term = sub("_.*", "", .$term)) %>% 
   mutate(term = str_to_upper(term)) %>% 
-  rename(lower = conf.low, upper = conf.high)
+  mutate(clock = dplyr::recode(clock,
+                               dunedin = "AgeAccelDunedin",
+                               grim = "AgeAccelGrim",
+                               pheno = "AgeAccelPheno",
+                               zhang = "AgeAccelZhang")) %>% 
+  mutate(term2 = dplyr::recode(term,
+                WAA.ZHANG.CONT = "AgeAccelZhang",
+                WAA.DUNEDINPOAM = "AgeAccelDunedin",
+                WAGEACCELGRIM = "AgeAccelGrim",
+                WAGEACCELPHENO = "AgeAccelPheno",
+                ZWINFLAMM = "Inflammaging signature",
+                NEOPT = "Neopterin",
+                CNCT = "Cystatin C",
+                S100AT = "Calprotectin",
+                SAAT = "Serum amyloid A",
+                IL8 = "Interleukin-8",
+                IL10 = "Interleukin-10",
+                IFNG = "Interferon-g",
+                TNFA = "TNF-a",
+                TRP = "Tryptophan",
+                KYN = "Kynurenine",
+                HK = "3-Hydroxykynurenine",
+                KA = "Kynurenic acid",
+                XA = "Xanthurenic acid",
+                AA = "Anthranilic acid",
+                HAA = "3-Hydroxyanthranilic acid",
+                PIC = "Piconilic acid",
+                QA = "Quinolinic acid",
+                KTR = "KTr",
+                PAR = "PAr",
+                HKXAR = "HK:XA",
+                CRP = "C-reactive protein",
+                IL6 = "Interleukin-6"))
+
+order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
+            "Calprotectin", "Cystatin C", "Serum amyloid A",
+            "Interferon-g","TNF-a", "Interleukin-6", 
+            "Interleukin-8", "Interleukin-10","Kynurenine",
+            "Tryptophan", "3-Hydroxykynurenine","Kynurenic acid",
+            "Xanthurenic acid", "Anthranilic acid", "3-Hydroxyanthranilic acid",
+            "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
 
 plot_data %>% 
-  ggplot(aes(x = estimate, y = term)) +
+  ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
   geom_vline(xintercept = 0) +
-  geom_pointrange(aes(xmin = lower,
-                 xmax = upper)) +
-  bayesplot_theme_set() +
-  labs(x = "Estimate with 95% CI", y = "Inflammatory/kynurenine biomarker")
+  geom_pointrange(aes(xmin = conf.low,
+                 xmax = conf.high),
+                 size = 0.25) +
+  facet_wrap(~ clock, nrow = 1) +
+  theme_stata() +
+  theme(axis.text.y = element_text(angle = 0)) +
+  labs(x = "Estimate, 95% CI", y = "")
+
+ggsave("Follow-up forest.png", device = "png",
+       height = 7, width = 10)
+
 
 
 #### overall R squared ####
 
-trim <- full %>% select(starts_with("logW"), W_AgeAccelGrim_fu, age_fu_correct, cob_cde_bl, sex_cde_bl, bmi_rrto, educlvl_ord) %>% 
-  select(ends_with("fu"), ends_with("fu2"), W_AgeAccelGrim_fu, age_fu_correct, cob_cde_bl, sex_cde_bl, bmi_rrto, educlvl_ord)
+### follow-up ###
 
-m1 <- lm(W_AgeAccelGrim_fu ~ age_fu_correct + cob_cde_bl + sex_cde_bl + bmi_rrto + educlvl_ord, data = trim)
-m2 <- lm(W_AgeAccelGrim_fu ~ ., data = trim)
+predictors <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_fu) %>% 
+  select(ends_with("fu"), ends_with("fu2")) %>% 
+  names()
 
-summary(m1)
+predictors <- paste(predictors, collapse = " + ")
 
-summary(m2)
+m1 <- ols(zwAgeAccelGrim_fu ~ cigst_cde_fu, data = full,
+          x = T, y = T)
+
+m1
+
+validate(m1, B = 1000)
+
+m2 <- ols(zwAgeAccelGrim_fu ~ cob_cde_fu + sex_cde_fu + 
+            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct +
+            zwlog_neopt_d_imp_fu + zwlog_cnct_g_imp_fu + zwlog_s100at_g_imp_fu + zwlog_saat_g_imp_fu + 
+            zwlog_il8_msd_imp_fu + zwlog_ifng_msd_imp_fu + zwlog_tnfa_msd_imp_fu + 
+            zwlog_trp_d_imp_fu + zwlog_kyn_d_imp_fu + zwlog_hk_d_imp_fu + zwlog_ka_d_imp_fu +
+            zwlog_xa_d_imp_fu + zwlog_aa_d_imp_fu + zwlog_haa_d_imp_fu + zwlog_pic_d_imp_fu + 
+            zwlog_qa_d_imp_fu + zwlog_KTr_imp_fu + zwlog_PAr_imp_fu + zwlog_HKXAr_imp_fu + 
+            zwlog_cysta_d_imp_fu + zwinflamm_sig_fu + zwlog_crp_g_imp_fu2 + zwlog_il6_msd_imp_fu2 + 
+            zwlog_il10_msd_imp_fu2, data = full,
+          x = T, y = T)
+
+m2
+
+validate(m2, B = 1000)
