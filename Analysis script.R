@@ -45,7 +45,7 @@ bl3 <- bl3 %>%
   filter(!case == 1) %>% 
   filter(!duplicated(h2_id))
 
-# add bl_suffix to all variables (except participant ID)
+# add _bl suffix to all variables (except participant ID)
 
 bl3 <- bl3 %>% 
   rename_at(vars(-h2_id), function(x) paste0(x,"_bl"))
@@ -63,9 +63,9 @@ fu_imp <- read.csv("S:\\MNHS-SCS-Medicine\\PM-Users\\Lachlan\\data\\new\\LP.FUP2
 
 fu <- left_join(fu_new, fu_old, by = "h2_id", suffix = c("","_old"))
 
-fu <- fu %>% select(-ends_with("_old"))
+fu <- fu %>% select(-ends_with("_old")) # remove redundant variables
 
-fu2 <- left_join(fu, fu_imp, by = "h2_id", suffix = c("", "_imp"))
+fu2 <- left_join(fu, fu_imp, by = "h2_id", suffix = c("", "_imp")) # add in imputed data
 
 # add fu suffix to all variables (except participant ID)
 
@@ -75,7 +75,6 @@ fu2 <- fu2 %>%
 ## Merge baseline and follow-up 
 
 full <- inner_join(bl3, fu2, by = "h2_id")
-
 
 # load corrected age data
 
@@ -100,7 +99,6 @@ full <- full %>% filter(!is.na(AgeAccelGrim_fu))
 full <- full %>% mutate(time_fu = age_fu_correct - age_bl_correct)
 
 hist(full$time_fu, breaks = 50) # minimum of 9 years 
-
 
 #### Table 1: baseline demographics ####
 
@@ -275,6 +273,14 @@ full <- full %>%
   mutate(across(all_of(epi_vars), winsorise,
                 .names = "w{.col}"))
 
+# standardize epigenetic ageing measures 
+
+full <- full %>% 
+  mutate(across(c("wAA.Zhang.cont_fu", "wAA.DunedinPoAm_fu", "wAgeAccelGrim_fu",
+                  "wAgeAccelPheno_fu", "wAA.Zhang.cont_bl", "wAA.DunedinPoAm_bl",
+                  "wAgeAccelGrim_bl", "wAgeAccelPheno_bl"), scale,
+                .names = "z{.col}"))
+
 # histograms of transformed markers
 
 full %>% select(wlog_neopt_d_imp_bl:wlog_xa_d_imp_bl) %>% 
@@ -313,7 +319,7 @@ full <- full %>%
 
 full %>% select(contains("inflamm")) %>% multi.hist()
 
-# winsorise inflammaging variables
+# winsorise and scale to Z scores inflammaging variables
 
 full <- full %>% 
   mutate(across(contains("inflamm"), winsorise, .names = "w{.col}")) %>% 
@@ -363,75 +369,684 @@ table1 <- flextable(res)
 
 #print(table1, preview = "docx")
 
+### Correlation with age at follow-up ###
 
-### Change over time for table 2 ###
-# We regress change in biomarker on
-# follow-up time
+# Names of all the biomarker variables at FU
 
-# mean center time to follow-up
+xs <- paste("zwlog_", marker_names, sep = "")
 
-full$ctime_fu <- full$time_fu - mean(full$time_fu)
+xs <- full %>% 
+  select(all_of(xs), zwinflamm_sig_fu) %>% 
+  select(ends_with("fu"), ends_with("fu2")) %>% 
+  select(-zwlog_cysta_d_imp_fu) %>% 
+  names()
 
-# CRP
+# Spearman's correlation between each biomarker and age at FU 
 
-ggplot(full, aes(x = age_fu_correct, y = wlog_crp_g_imp_fu2)) +
-  geom_jitter() + geom_smooth()
+cors <- map(xs,
+     ~ cor.test(full[[.x]], full$age_fu_correct, method = "spearman")) %>% 
+  map_df(tidy) %>% 
+  cbind(xs, .)
+  
+knitr::kable(cors, digits = 2)
 
-m_crp <- lm(wlog_crp_g_imp_fu2 ~ 1 + ctime_fu + wlog_crp_g_imp_bl2, data = full)
 
-sjPlot::plot_model(m_crp, type = "pred", terms = "ctime_fu")
-cor(full$age_fu_correct, full$wlog_crp_g_imp_fu2)
+#### Regression models ####
 
-# Neopterin 
+# sex as a factor
 
-ggplot(full, aes(x = age_fu_correct, y = wlog_neopt_d_imp_fu)) +
-  geom_jitter() + geom_smooth()
+full$sex_cde_bl <- as.factor(full$sex_cde_bl)
 
-exp(mean(full$wlog_neopt_d_imp_fu - full$wlog_neopt_d_imp_bl))
+full$sex_cde_fu <- as.factor(full$sex_cde_fu)
 
-m_neo <- lm(wlog_neopt_d_imp_fu ~ ctime_fu + wlog_neopt_d_imp_bl, data = full)
 
-tidy(m_neo, conf.int = T) %>% 
-  mutate(percent = (exp(estimate)-1) * 100) %>% 
-  mutate(conf.low = (exp(conf.low)-1) * 100, 
-         conf.high = (exp(conf.high)-1) * 100) %>% 
-  select(term, percent, conf.low, conf.high)
+#### Figure 1 - Cross sectional association at BL #### 
 
-cor(full$age_fu_correct, full$wlog_neopt_d_imp_fu)
-# cystatin
+# create vector including all baseline biomarker variables names
 
-full$change_cnct = full$wlog_cnct_g_imp_fu - full$wlog_cnct_g_imp_bl
+xs <- paste("zwlog_", marker_names, sep = "")
 
-m_cys <- lm(change_cnct ~ time_fu + wlog_cnct_g_imp_bl, data = full)
+xs <- full %>% 
+  select(all_of(xs), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  select(-zwlog_cysta_d_imp_bl) %>% 
+  names()
 
-tidy(m_cys, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>% 
-  mutate(conf.low = (exp(conf.low)-1) * 100, 
-         conf.high = (exp(conf.high)-1) * 100)
 
-# serum amyloid A
+# create vector of all epigenetic ageing variables 
 
-full$change_saat = full$wlog_saat_g_imp_fu - full$wlog_saat_g_imp_bl2
+ys <- c("zwAgeAccelPheno_bl", "zwAgeAccelGrim_bl", "zwAA.Zhang.cont_bl", "zwAA.DunedinPoAm_bl")
 
-m_saat <- lm(wlog_saat_g_imp_fu ~ time_fu + wlog_saat_g_imp_bl2, data = full)
+# regression for each combination of biomarker and AgeAccel variable 
 
-tidy(m_saat, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>% 
-  mutate(conf.low = (exp(conf.low)-1) * 100, 
-         conf.high = (exp(conf.high)-1) * 100)
 
-# interleukin 6
+bl_cs_results <- 
+  
+  # every combination of biomarker and AgeAccel
+  
+  crossing(Var1 = xs, Var2 = ys) %>%
+  
+  # perform linear regression adjusted for age and sex and save results
+  
+  mutate(frm = str_c(Var2, Var1, sep = " ~ sex_cde_bl + cob_cde_bl + "),  
+         models = map(frm, 
+                       ~tidy(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  
+  # Drop unneeded parameters and rename variables for plotting 
+  
+  select(-Var1, -frm) %>% 
+  rename('clock' = Var2) %>% 
+  filter(!term %in% c("(Intercept)", "sex_cde_blMale", "cob_cde_blNorthern Europe", "cob_cde_blSouthern Europe")) %>% 
+  mutate(term = str_replace(term, "zwlog_", "")) %>% 
+  mutate(term = sub("_.*", "", .$term)) %>% 
+  mutate(term = str_to_upper(term)) %>% 
+  mutate(clock = dplyr::recode(clock,
+                               zwAA.DunedinPoAm_bl = "AgeAccelDunedin",
+                               zwAA.Zhang.cont_bl = "AgeAccelZhang",
+                               zwAgeAccelGrim_bl = "AgeAccelGrim",
+                               zwAgeAccelPheno_bl = "AgeAccelPheno")) %>% 
+  mutate(term2 = dplyr::recode(term,
+                               ZWINFLAMM = "Inflammaging signature",
+                               NEOPT = "Neopterin",
+                               CNCT = "Cystatin C",
+                               S100AT = "Calprotectin",
+                               SAAT = "Serum amyloid A",
+                               IL8 = "Interleukin-8",
+                               IL10 = "Interleukin-10",
+                               IFNG = "Interferon-g",
+                               TNFA = "TNF-a",
+                               TRP = "Tryptophan",
+                               KYN = "Kynurenine",
+                               HK = "3-Hydroxykynurenine",
+                               KA = "Kynurenic acid",
+                               XA = "Xanthurenic acid",
+                               AA = "Anthranilic acid",
+                               HAA = "3-Hydroxyanthranilic acid",
+                               PIC = "Piconilic acid",
+                               QA = "Quinolinic acid",
+                               KTR = "KTr",
+                               PAR = "PAr",
+                               HKXAR = "HK:XA",
+                               CRP = "C-reactive protein",
+                               IL6 = "Interleukin-6"))
 
-full$change_il6 = full$wlog_il6_msd_imp_fu2 - full$wlog_il6_msd_imp_bl
 
-m_il6 <- lm(wlog_il6_msd_imp_fu2 ~ time_fu + wlog_il6_msd_imp_bl, data = full)
+## plot ## 
 
-tidy(m_il6, conf.int = T) %>% mutate(estimate = (exp(estimate)-1) * 100) %>% 
-  mutate(conf.low = (exp(conf.low)-1) * 100, 
-         conf.high = (exp(conf.high)-1) * 100)
+order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
+            "Calprotectin", "Cystatin C", "Serum amyloid A",
+            "Interferon-g","TNF-a", "Interleukin-6", 
+            "Interleukin-8", "Interleukin-10","Kynurenine",
+            "Tryptophan", "3-Hydroxykynurenine","Kynurenic acid",
+            "Xanthurenic acid", "Anthranilic acid", "3-Hydroxyanthranilic acid",
+            "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
 
-ggplot(full, aes(x = age_bl_correct, y = wlog_crp_g_imp_bl2)) +
-  geom_point() + geom_smooth()
+bl_cs_results %>% 
+  ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
+  geom_vline(xintercept = 0) +
+  geom_pointrange(aes(xmin = conf.low,
+                      xmax = conf.high),
+                  fatten = 4) +
+  facet_wrap(~ clock, nrow = 1) +
+  theme_stata() +
+  theme(axis.text.y = element_text(angle = 0)) +
+  labs(x = "Estimate, 95% CI", y = "") +
+  xlim(c(-0.4, 0.4)) +
+  theme(panel.spacing.x = unit(1, "lines"))
 
-#### Figure 1 ####
+
+ggsave("Baseline forest.png", device = "png",
+       height = 7, width = 10)
+
+
+
+#### Figure 2 - Cross sectional association at FU #### 
+
+# create vector including all FU biomarker variables names
+
+xs <- paste("zwlog_", marker_names, sep = "")
+
+xs <- full %>% 
+  select(all_of(xs), zwinflamm_sig_fu) %>% 
+  select(ends_with("fu"), ends_with("fu2")) %>% 
+  select(-zwlog_cysta_d_imp_fu) %>% 
+  names()
+
+# create vector of all epigenetic ageing variables 
+
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+
+# regression for each combination of biomarker and epigenetic ageing variable 
+
+
+fu_cs_results <- crossing(Var1 = xs, Var2 = ys) %>%
+  mutate(frm = str_c(Var2, Var1, sep = " ~ sex_cde_fu + cob_cde_fu + "),  
+         models = map(frm, 
+                      ~tidy(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  select(-Var1, -frm) %>% 
+  rename('clock' = Var2) %>% 
+  filter(!term %in% c("(Intercept)", "sex_cde_fuMale", "cob_cde_fuNorthern Europe", "cob_cde_fuSouthern Europe")) %>% 
+  mutate(term = str_replace(term, "zwlog_", "")) %>% 
+  mutate(term = sub("_.*", "", .$term)) %>% 
+  mutate(term = str_to_upper(term)) %>% 
+  mutate(clock = dplyr::recode(clock,
+                               zwAA.DunedinPoAm_fu = "AgeAccelDunedin",
+                               zwAA.Zhang.cont_fu = "AgeAccelZhang",
+                               zwAgeAccelGrim_fu = "AgeAccelGrim",
+                               zwAgeAccelPheno_fu = "AgeAccelPheno")) %>% 
+  mutate(term2 = dplyr::recode(term,
+                               ZWINFLAMM = "Inflammaging signature",
+                               NEOPT = "Neopterin",
+                               CNCT = "Cystatin C",
+                               S100AT = "Calprotectin",
+                               SAAT = "Serum amyloid A",
+                               IL8 = "Interleukin-8",
+                               IL10 = "Interleukin-10",
+                               IFNG = "Interferon-g",
+                               TNFA = "TNF-a",
+                               TRP = "Tryptophan",
+                               KYN = "Kynurenine",
+                               HK = "3-Hydroxykynurenine",
+                               KA = "Kynurenic acid",
+                               XA = "Xanthurenic acid",
+                               AA = "Anthranilic acid",
+                               HAA = "3-Hydroxyanthranilic acid",
+                               PIC = "Piconilic acid",
+                               QA = "Quinolinic acid",
+                               KTR = "KTr",
+                               PAR = "PAr",
+                               HKXAR = "HK:XA",
+                               CRP = "C-reactive protein",
+                               IL6 = "Interleukin-6"))
+
+
+## plot ## 
+
+order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
+            "Calprotectin", "Cystatin C", "Serum amyloid A",
+            "Interferon-g","TNF-a", "Interleukin-6", 
+            "Interleukin-8", "Interleukin-10","Kynurenine",
+            "Tryptophan", "3-Hydroxykynurenine","Kynurenic acid",
+            "Xanthurenic acid", "Anthranilic acid", "3-Hydroxyanthranilic acid",
+            "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
+
+fu_cs_results %>% 
+  ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
+  geom_vline(xintercept = 0) +
+  geom_pointrange(aes(xmin = conf.low,
+                      xmax = conf.high),
+                  fatten = 4) +
+  facet_wrap(~ clock, nrow = 1) +
+  theme_stata() +
+  theme(axis.text.y = element_text(angle = 0)) +
+  labs(x = "Estimate, 95% CI", y = "") +
+  xlim(c(-0.4, 0.4)) +
+  theme(panel.spacing.x = unit(1, "lines"))
+
+
+ggsave("follow-up forest.png", device = "png",
+       height = 7, width = 10)
+
+
+#### Figure 3 - Prospective associations #### 
+
+# create vector including all BL biomarker variables names
+
+xs <- paste("zwlog_", marker_names, sep = "")
+
+xs <- full %>% 
+  select(all_of(xs), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  select(-zwlog_cysta_d_imp_bl) %>% 
+  names()
+
+# create vector of all epigenetic ageing variables 
+
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+
+# regression for each combination of biomarker and epigenetic ageing variable 
+
+prosp_results <- 
+  
+  # all combinations of biomarker and AgeAccel vars
+  
+  crossing(Var1 = xs, Var2 = ys) %>%
+  
+  # create formula for each regression model 
+  
+  mutate(frm = str_c(Var2, Var1, sep = " ~ sex_cde_fu + cob_cde_fu + ")) %>% 
+  
+  # Add baseline AgeAccel variable to formula 
+  
+  mutate(Var3 = sub("_fu", "_bl", Var2)) %>% 
+  mutate(frm = str_c(frm, Var3, sep = " + ")) %>% 
+  select(-Var3) %>% 
+  
+  # Regressions and save results 
+  
+  mutate(models = map(frm, 
+                      ~tidy(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  
+  # format results for plotting 
+  
+  select(-Var1, -frm) %>% 
+  rename('clock' = Var2) %>% 
+  filter(str_detect(term, "_bl"), !term %in% c("zwAA.DunedinPoAm_bl", "zwAA.Zhang.cont_bl", "zwAgeAccelGrim_bl", "zwAgeAccelPheno_bl")) %>% 
+  mutate(term = str_replace(term, "zwlog_", "")) %>% 
+  mutate(term = sub("_.*", "", .$term)) %>% 
+  mutate(term = str_to_upper(term)) %>% 
+  mutate(clock = dplyr::recode(clock,
+                               zwAA.DunedinPoAm_fu = "AgeAccelDunedin",
+                               zwAA.Zhang.cont_fu = "AgeAccelZhang",
+                               zwAgeAccelGrim_fu = "AgeAccelGrim",
+                               zwAgeAccelPheno_fu = "AgeAccelPheno")) %>% 
+  mutate(term2 = dplyr::recode(term,
+                               ZWINFLAMM = "Inflammaging signature",
+                               NEOPT = "Neopterin",
+                               CNCT = "Cystatin C",
+                               S100AT = "Calprotectin",
+                               SAAT = "Serum amyloid A",
+                               IL8 = "Interleukin-8",
+                               IL10 = "Interleukin-10",
+                               IFNG = "Interferon-g",
+                               TNFA = "TNF-a",
+                               TRP = "Tryptophan",
+                               KYN = "Kynurenine",
+                               HK = "3-Hydroxykynurenine",
+                               KA = "Kynurenic acid",
+                               XA = "Xanthurenic acid",
+                               AA = "Anthranilic acid",
+                               HAA = "3-Hydroxyanthranilic acid",
+                               PIC = "Piconilic acid",
+                               QA = "Quinolinic acid",
+                               KTR = "KTr",
+                               PAR = "PAr",
+                               HKXAR = "HK:XA",
+                               CRP = "C-reactive protein",
+                               IL6 = "Interleukin-6"))
+
+
+## plot ## 
+
+order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
+            "Calprotectin", "Cystatin C", "Serum amyloid A",
+            "Interferon-g","TNF-a", "Interleukin-6", 
+            "Interleukin-8", "Interleukin-10","Kynurenine",
+            "Tryptophan", "3-Hydroxykynurenine","Kynurenic acid",
+            "Xanthurenic acid", "Anthranilic acid", "3-Hydroxyanthranilic acid",
+            "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
+
+prosp_results %>% 
+  ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
+  geom_vline(xintercept = 0) +
+  geom_pointrange(aes(xmin = conf.low,
+                      xmax = conf.high),
+                  fatten = 4) +
+  facet_wrap(~ clock, nrow = 1) +
+  theme_stata() +
+  theme(axis.text.y = element_text(angle = 0)) +
+  labs(x = "Estimate, 95% CI", y = "") +
+  xlim(c(-0.4, 0.4)) +
+  theme(panel.spacing.x = unit(1, "lines"))
+
+
+ggsave("Prospective forest.png", device = "png",
+       height = 7, width = 10)
+
+
+#### Figure 4 - Change over time ####
+
+# create vector including all BL biomarker variables names
+
+xs <- paste("zwlog_", marker_names, sep = "")
+
+xs <- full %>% 
+  select(all_of(xs), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  select(-zwlog_cysta_d_imp_bl) %>% 
+  names()
+
+# create vector of all epigenetic ageing variables 
+
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+
+# regression for each combination of biomarker and epigenetic ageing variable 
+
+change_results <- 
+  
+  # create formulas with confounder variables 
+  
+  crossing(Var1 = xs, Var2 = ys) %>%
+  mutate(frm = str_c(Var2, Var1, sep = " ~ sex_cde_fu + cob_cde_fu + ")) %>% 
+  
+  # Add baseline AgeAccel and baseline biomarker variables to each model
+  
+  mutate(Var3 = sub("_fu", "_bl", Var2)) %>% 
+  mutate(Var4 = sub("_bl", "_fu", Var1)) %>% 
+  
+  # Correct variable names
+  
+  mutate(Var4 = dplyr::recode(Var4,
+    zwlog_ifng_msd_imp_fu2 = 'zwlog_ifng_msd_imp_fu',
+    zwlog_saat_g_imp_fu2 = 'zwlog_saat_g_imp_fu',
+    zwlog_il6_msd_imp_fu = 'zwlog_il6_msd_imp_fu2'
+  )) %>% 
+
+  # add confounders to regression
+  
+  mutate(frm = str_c(frm, Var3, sep = " + ")) %>% 
+  mutate(frm = str_c(frm, Var4, sep = " + ")) %>% 
+  select(-Var3, -Var4) %>% 
+  
+  # regressions 
+  
+  mutate(models = map(frm, 
+                      ~tidy(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  select(-Var1, -frm) %>% 
+  
+  # prepare data for plotting 
+  
+  rename('clock' = Var2) %>% 
+  filter(str_detect(term, "imp_fu") | str_detect(term, "sig_fu")) %>% 
+  mutate(term = str_replace(term, "zwlog_", "")) %>% 
+  mutate(term = sub("_.*", "", .$term)) %>% 
+  mutate(term = str_to_upper(term)) %>% 
+  mutate(clock = dplyr::recode(clock,
+                               zwAA.DunedinPoAm_fu = "AgeAccelDunedin",
+                               zwAA.Zhang.cont_fu = "AgeAccelZhang",
+                               zwAgeAccelGrim_fu = "AgeAccelGrim",
+                               zwAgeAccelPheno_fu = "AgeAccelPheno")) %>% 
+  mutate(term2 = dplyr::recode(term,
+                               ZWINFLAMM = "Inflammaging signature",
+                               NEOPT = "Neopterin",
+                               CNCT = "Cystatin C",
+                               S100AT = "Calprotectin",
+                               SAAT = "Serum amyloid A",
+                               IL8 = "Interleukin-8",
+                               IL10 = "Interleukin-10",
+                               IFNG = "Interferon-g",
+                               TNFA = "TNF-a",
+                               TRP = "Tryptophan",
+                               KYN = "Kynurenine",
+                               HK = "3-Hydroxykynurenine",
+                               KA = "Kynurenic acid",
+                               XA = "Xanthurenic acid",
+                               AA = "Anthranilic acid",
+                               HAA = "3-Hydroxyanthranilic acid",
+                               PIC = "Piconilic acid",
+                               QA = "Quinolinic acid",
+                               KTR = "KTr",
+                               PAR = "PAr",
+                               HKXAR = "HK:XA",
+                               CRP = "C-reactive protein",
+                               IL6 = "Interleukin-6"))
+
+
+## plot ## 
+
+order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
+            "Calprotectin", "Cystatin C", "Serum amyloid A",
+            "Interferon-g","TNF-a", "Interleukin-6", 
+            "Interleukin-8", "Interleukin-10","Kynurenine",
+            "Tryptophan", "3-Hydroxykynurenine","Kynurenic acid",
+            "Xanthurenic acid", "Anthranilic acid", "3-Hydroxyanthranilic acid",
+            "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
+
+change_results %>% 
+  ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
+  geom_vline(xintercept = 0) +
+  geom_pointrange(aes(xmin = conf.low,
+                      xmax = conf.high),
+                  fatten = 4) +
+  facet_wrap(~ clock, nrow = 1) +
+  theme_stata() +
+  theme(axis.text.y = element_text(angle = 0)) +
+  labs(x = "Estimate, 95% CI", y = "") +
+  xlim(c(-0.4, 0.4)) +
+  theme(panel.spacing.x = unit(1, "lines"))
+
+ggsave("Longitudinal forest.png", device = "png",
+       height = 7, width = 10)
+
+
+#### Comparing estimates ####
+
+## Baseline ##
+
+# strongest results 
+
+bl_cs_results %>% 
+  select(clock, term2, estimate, p.value) %>% 
+  arrange(p.value)
+
+# proportion with FDR p < 0.05
+
+
+bl_cs_results %>% 
+  mutate(fdr_p = p.adjust(bl_cs_results$p.value, method = "fdr")) %>% 
+  mutate(sig = if_else(fdr_p < 0.05, "Yes", "No")) %>% 
+  group_by(sig) %>% 
+  tally() %>% 
+  mutate(percent = n/sum(n) * 100)
+
+# proportion with estimate > 0 
+
+bl_cs_results %>% 
+  mutate(fdr_p = p.adjust(bl_cs_results$p.value, method = "fdr")) %>% 
+  mutate(sig = if_else(fdr_p < 0.05, "Yes", "No")) %>% 
+  mutate(positive = if_else(estimate > 0, "Yes", "No")) %>% 
+  group_by(sig, positive) %>% 
+  tally() %>% 
+  mutate(percent = n/sum(n) * 100)
+
+## Follow-up ##
+
+# strongest results 
+
+fu_cs_results %>% 
+  select(clock, term2, estimate, p.value) %>% 
+  arrange(p.value)
+
+# proportion with p < Bonferroni threshold (0.0021)
+
+fu_cs_results %>% 
+  mutate(fdr_p = p.adjust(fu_cs_results$p.value, method = "fdr")) %>% 
+  mutate(sig = if_else(fdr_p < 0.05, "Yes", "No")) %>% 
+  group_by(sig) %>% 
+  tally() %>% 
+  mutate(percent = n/sum(n) * 100)
+
+# proportion with estimate > 0 
+
+fu_cs_results %>% 
+  mutate(fdr_p = p.adjust(fu_cs_results$p.value, method = "fdr")) %>% 
+  mutate(sig = if_else(fdr_p < 0.05, "Yes", "No")) %>% 
+  mutate(positive = if_else(estimate > 0, "Yes", "No")) %>% 
+  group_by(sig, positive) %>% 
+  tally() %>% 
+  mutate(percent = n/sum(n) * 100)
+
+## propsective ##
+
+# strongest results 
+
+prosp_results %>% 
+  select(clock, term2, estimate, p.value) %>% 
+  arrange(p.value)
+
+# proportion with p < Bonferroni threshold (0.0021)
+
+prosp_results %>% 
+  mutate(fdr_p = p.adjust(prosp_results$p.value, method = "fdr")) %>% 
+  mutate(sig = if_else(fdr_p < 0.05, "Yes", "No")) %>% 
+  group_by(sig) %>% 
+  tally() %>% 
+  mutate(percent = n/sum(n) * 100)
+
+
+## change model ##
+
+# strongest results 
+
+change_results %>% 
+  select(clock, term2, estimate, p.value) %>% 
+  arrange(p.value)
+
+# proportion with p < Bonferroni threshold (0.0021)
+
+change_results %>% 
+  mutate(fdr_p = p.adjust(change_results$p.value, method = "fdr")) %>% 
+  mutate(sig = if_else(fdr_p < 0.05, "Yes", "No")) %>% 
+  group_by(sig) %>% 
+  tally() %>% 
+  mutate(percent = n/sum(n) * 100)
+
+# proportion with estimate > 0 
+
+change_results %>% 
+  mutate(fdr_p = p.adjust(change_results$p.value, method = "fdr")) %>% 
+  mutate(sig = if_else(fdr_p < 0.05, "Yes", "No")) %>% 
+  mutate(positive = if_else(estimate > 0, "Yes", "No")) %>% 
+  group_by(sig, positive) %>% 
+  tally() %>% 
+  mutate(percent = n/sum(n) * 100)
+
+## comparison ##
+
+estimates <- tibble(
+  term = bl_cs_results$term2,
+  clock = bl_cs_results$clock,
+  bl = bl_cs_results$estimate,
+  fu = fu_cs_results$estimate,
+  prosp = prosp_results$estimate,
+  change = change_results$estimate
+)
+
+estimates %>% 
+  mutate(dif_estimate = fu - bl) %>% 
+  summarise(mean = mean(dif_estimate),
+            sd = sd(dif_estimate))
+
+
+#### Variance explained  ####
+
+### Baseline ###
+
+bl_preds <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ")
+
+ys <- c("zwAgeAccelPheno_bl", "zwAgeAccelGrim_bl", "zwAA.Zhang.cont_bl", "zwAA.DunedinPoAm_bl")
+
+crossing(Var1 = bl_preds, Var2 = ys) %>% 
+  mutate(frm = str_c(Var2, Var1, sep = " ~ "),
+       models = map(frm, 
+                    ~glance(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  select(-Var1, -frm)
+
+### Follow-up ###
+
+fu_preds <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_fu) %>% 
+  select(ends_with("fu"), ends_with("fu2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ")
+
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+
+crossing(Var1 = fu_preds, Var2 = ys) %>% 
+  mutate(frm = str_c(Var2, Var1, sep = " ~ "),
+         models = map(frm, 
+                      ~glance(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  select(-Var1, -frm)
+
+### Prospective model ###
+
+bl_preds <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ")
+
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+
+crossing(Var1 = bl_preds, Var2 = ys) %>% 
+  
+  # create one formula including baseline AgeAccel variable only
+  # and one containing baseline AgeAccel and all biomarkers
+  
+  mutate(Var3 = sub("_fu", "_bl", Var2)) %>% 
+  mutate(Var1 = str_c(Var1, Var3, sep = " + ")) %>% 
+  mutate(frm1 = str_c(Var2, Var3, sep = " ~ ")) %>% 
+  mutate(frm2 = str_c(Var2, Var1, sep = " ~ ")) %>% 
+  pivot_longer(cols = c(frm1, frm2), 
+               names_to = "num", values_to = "frm") %>% 
+  mutate(models = map(frm, 
+                      ~glance(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  select(-Var1, -Var3, -num, -sigma, -statistic) %>% 
+  
+  # calculate the difference in R squared between the two models
+  
+  mutate(R2_dif = r.squared - lag(r.squared)) %>% 
+  
+  # show difference in R squared from baseline AgeAccel model for
+  # each full model
+  
+  filter(str_detect(frm, "imp"))
+
+### Change model ###
+
+bl_preds <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ")
+
+fu_preds <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_fu) %>% 
+  select(ends_with("fu"), ends_with("fu2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ")
+
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+
+crossing(fu_bio = fu_preds, fu_aa = ys, bl_bio = bl_preds) %>%
+  mutate(bl_aa = sub("_fu", "_bl", fu_aa)) %>% 
+  mutate(frm1 = str_c(bl_bio, bl_aa, sep = " + ")) %>% 
+  mutate(frm2 = str_c(frm1, fu_bio, sep = " + ")) %>% 
+  mutate(frm1 = str_c(fu_aa, frm1, sep = " ~ ")) %>% 
+  mutate(frm2 = str_c(fu_aa, frm2, sep = " ~ ")) %>% 
+  pivot_longer(cols = c(frm1, frm2),
+               names_to = "num", values_to = "frm") %>% 
+  mutate(models = map(frm, 
+                      ~glance(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  select(-fu_bio, -bl_bio, -bl_aa, -num, -sigma, -statistic) %>% 
+  
+  # calculate the difference in R squared between the two models
+  
+  mutate(R2_dif = r.squared - lag(r.squared)) %>% 
+  
+  # show difference in R squared from baseline AgeAccel model for
+  # each full model
+  
+  filter(str_detect(frm, "_fu2"))
+
+#### Cox regression ####
+
+library(survival)
+
+
+#### Supplementary Figure 1 -correlation matrix ####
 ## Correlation matrix of inflammation/TK biomarkers and age accel variables
 ## at follow-up 
 
@@ -461,33 +1076,33 @@ plot_data <- cors_spearman(cor_dat) %>%
   mutate(measure2 = sub("_.*", "", .$measure2)) %>% 
   mutate(across(contains("measure"), str_to_upper)) %>% 
   mutate(across(contains("measure"), ~ dplyr::recode(.,
-                           WAA.ZHANG.CONT = "AgeAccelZhang",
-                           WAA.DUNEDINPOAM = "AgeAccelDunedin",
-                           WAGEACCELGRIM = "AgeAccelGrim",
-                           WAGEACCELPHENO = "AgeAccelPheno",
-                           WINFLAMM = "Inflammaging signature",
-                           NEOPT = "Neopterin",
-                           CNCT = "Cystatin C",
-                           S100AT = "Calprotectin",
-                           SAAT = "Serum amyloid A",
-                           IL8 = "Interleukin-8",
-                           IL10 = "Interleukin-10",
-                           IFNG = "Interferon-g",
-                           TNFA = "TNF-a",
-                           TRP = "Tryptophan",
-                           KYN = "Kynurenine",
-                           HK = "3-Hydroxykynurenine",
-                           KA = "Kynurenic acid",
-                           XA = "Xanthurenic acid",
-                           AA = "Anthranilic acid",
-                           HAA = "3-Hydroxyanthranilic acid",
-                           PIC = "Piconilic acid",
-                           QA = "Quinolinic acid",
-                           KTR = "KTr",
-                           PAR = "PAr",
-                           HKXAR = "HK:XA",
-                           CRP = "C-reactive protein",
-                           IL6 = "Interleukin-6")))
+                                                     WAA.ZHANG.CONT = "AgeAccelZhang",
+                                                     WAA.DUNEDINPOAM = "AgeAccelDunedin",
+                                                     WAGEACCELGRIM = "AgeAccelGrim",
+                                                     WAGEACCELPHENO = "AgeAccelPheno",
+                                                     WINFLAMM = "Inflammaging signature",
+                                                     NEOPT = "Neopterin",
+                                                     CNCT = "Cystatin C",
+                                                     S100AT = "Calprotectin",
+                                                     SAAT = "Serum amyloid A",
+                                                     IL8 = "Interleukin-8",
+                                                     IL10 = "Interleukin-10",
+                                                     IFNG = "Interferon-g",
+                                                     TNFA = "TNF-a",
+                                                     TRP = "Tryptophan",
+                                                     KYN = "Kynurenine",
+                                                     HK = "3-Hydroxykynurenine",
+                                                     KA = "Kynurenic acid",
+                                                     XA = "Xanthurenic acid",
+                                                     AA = "Anthranilic acid",
+                                                     HAA = "3-Hydroxyanthranilic acid",
+                                                     PIC = "Piconilic acid",
+                                                     QA = "Quinolinic acid",
+                                                     KTR = "KTr",
+                                                     PAR = "PAr",
+                                                     HKXAR = "HK:XA",
+                                                     CRP = "C-reactive protein",
+                                                     IL6 = "Interleukin-6")))
 
 order <-  c("AgeAccelZhang", "AgeAccelDunedin", "AgeAccelGrim",
             "AgeAccelPheno", "Inflammaging signature", "Neopterin", "C-reactive protein",
@@ -515,7 +1130,7 @@ plot_data %>%
 ggsave("correlation heatmap.png", device = "png", dpi = 450,
        width = 12, height = 10)
 
-#### Figure 3 ####
+#### Supplementary Figure 2 - age correlations ####
 
 # create text to annotate plot 
 
@@ -530,14 +1145,14 @@ full %>%
   mutate(across(c("wscore.Zhang.cont_fu", "wDunedinPoAm_fu", 
                   "wDNAmGrimAge_fu", "wDNAmPhenoAge_fu", "winflamm_sig_fu"), scale)) %>% 
   pivot_longer(cols = c("wscore.Zhang.cont_fu", "wDunedinPoAm_fu", 
-                               "wDNAmGrimAge_fu", "wDNAmPhenoAge_fu", "winflamm_sig_fu"),
-                      names_to = "variable", values_to = "ageaccel") %>%
+                        "wDNAmGrimAge_fu", "wDNAmPhenoAge_fu", "winflamm_sig_fu"),
+               names_to = "variable", values_to = "ageaccel") %>%
   mutate(variable = dplyr::recode(variable,
-                           wscore.Zhang.cont_fu = "Zhang",
-                           wDunedinPoAm_fu = "DunedinPoAm",
-                           wDNAmGrimAge_fu = "GrimAge",
-                           wDNAmPhenoAge_fu = "PhenoAge",
-                           winflamm_sig_fu = "Inflammaging")) %>%
+                                  wscore.Zhang.cont_fu = "Zhang",
+                                  wDunedinPoAm_fu = "DunedinPoAm",
+                                  wDNAmGrimAge_fu = "GrimAge",
+                                  wDNAmPhenoAge_fu = "PhenoAge",
+                                  winflamm_sig_fu = "Inflammaging")) %>%
   ggplot(aes(x = ageaccel, y = age_fu_correct)) +
   geom_point() + geom_smooth(method = "lm", colour = "darkblue") + 
   facet_wrap(~ factor(variable,
@@ -547,1271 +1162,98 @@ full %>%
   labs(x = "Epigenetic ageing/inflammaging biomarker (scaled)", y = "Chronological age") +
   theme_stata() +
   geom_text(
-      data    = ann_text,
-      mapping = aes(x = x, y = y, label = label)
-    )
+    data    = ann_text,
+    mapping = aes(x = x, y = y, label = label)
+  )
 
 ggsave("clock age correlation.png", device = "png",
        width = 7, height = 5)
 
+bl_cs_results %>% 
+  filter(term == "CRP")
+#### Supplementary Figures 3-7 - Sensitivity confounders ####
 
-#### Table 3 ####
+full$cigst_cde_imp_bl <- as.factor(full$cigst_cde_imp_bl)
 
-## confounders
+levels(full$cigst_cde_imp_bl) <- c("Never", "Current", "Former")
 
-full$sex_cde_bl <- as.factor(full$sex_cde_bl)
+full$cigst_cde_imp_fu <- as.factor(full$cigst_cde_imp_fu)
 
-levels(full$sex_cde_bl) <- c("Male","Female")
+levels(full$cigst_cde_imp_fu) <- c("Never", "Current", "Former")
 
-summary(as.factor(full$cigst_cde_bl))
+### Figure S1 - Cross sectional association at BL ###
 
-summary(as.factor(full$educlvl_ord_bl))
+# create vector including all baseline biomarker variables names
 
-## standardize epigenetic ageing measures 
+xs <- paste("zwlog_", marker_names, sep = "")
 
-full <- full %>% 
-  mutate(across(c("wAA.Zhang.cont_fu", "wAA.DunedinPoAm_fu", "wAgeAccelGrim_fu",
-                  "wAgeAccelPheno_fu", "wAA.Zhang.cont_bl", "wAA.DunedinPoAm_fu",
-                  "wAgeAccelGrim_bl", "wAgeAccelPheno_bl"), scale,
-                .names = "z{.col}"))
+xs <- full %>% 
+  select(all_of(xs), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  select(-zwlog_cysta_d_imp_bl) %>% 
+  names()
 
-## CRP models
 
-# Pheno
+# create vector of all epigenetic ageing variables 
 
-m1 <- lm(zwAgeAccelPheno_fu ~ zwlog_crp_g_imp_fu2 + cob_cde_fu + sex_cde_fu + 
-         bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
+ys <- c("zwAgeAccelPheno_bl", "zwAgeAccelGrim_bl", "zwAA.Zhang.cont_bl", "zwAA.DunedinPoAm_bl")
 
-crPlots(m1, terms = "zwlog_crp_g_imp_fu2")
+# regression for each combination of biomarker and AgeAccel variable 
 
-tidy(m1, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m1_res
-
-# grim
-
-m2 <- lm(zwAgeAccelGrim_fu ~ zwlog_crp_g_imp_fu2 + cob_cde_fu + sex_cde_fu + 
-           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
-
-crPlots(m2, terms = "zwlog_crp_g_imp_fu2")
-
-tidy(m2, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m2_res
-
-# Zhang
-
-m3 <- lm(zwAA.Zhang.cont_fu ~ zwlog_crp_g_imp_fu2 + cob_cde_fu + sex_cde_fu + 
-           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
-
-crPlots(m3, terms = "zwlog_crp_g_imp_fu2")
-
-tidy(m3, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m3_res
-
-# Dunedin 
-
-m4 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_crp_g_imp_fu2 + cob_cde_fu + sex_cde_fu + 
-           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
-
-crPlots(m4, terms = "zwlog_crp_g_imp_fu2")
-
-tidy(m4, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m4_res
-
-## Neopterin 
-
-# Pheno
-
-m5 <- lm(zwAgeAccelPheno_fu ~ zwlog_neopt_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
-
-crPlots(m5, terms = "zwlog_neopt_d_imp_fu")
-
-tidy(m5, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m5_res
-
-# grim
-
-m6 <- lm(zwAgeAccelGrim_fu ~ zwlog_neopt_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
-
-crPlots(m6, terms = "zwlog_neopt_d_imp_fu")
-
-tidy(m6, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m6_res
-
-# Zhang
-
-m7 <- lm(zwAA.Zhang.cont_fu ~ zwlog_neopt_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
-
-crPlots(m7, terms = "zwlog_neopt_d_imp_fu")
-
-tidy(m7, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m7_res
-
-# Dunedin 
-
-m8 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_neopt_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
-
-crPlots(m8, terms = "zwlog_neopt_d_imp_fu")
-
-tidy(m8, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m8_res
-
-## cystatin-C
-
-# Pheno
-
-m9 <- lm(zwAgeAccelPheno_fu ~ zwlog_cnct_g_imp_fu + cob_cde_fu + sex_cde_fu + 
-           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
-
-crPlots(m9, terms = "zwlog_cnct_g_imp_fu")
-
-tidy(m9, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m9_res
-
-# grim
-
-m10 <- lm(zwAgeAccelGrim_fu ~ zwlog_cnct_g_imp_fu + cob_cde_fu + sex_cde_fu + 
-           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
-
-crPlots(m10, terms = "zwlog_cnct_g_imp_fu")
-
-tidy(m10, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m10_res
-
-# Zhang
-
-m11 <- lm(zwAA.Zhang.cont_fu ~ zwlog_cnct_g_imp_fu + cob_cde_fu + sex_cde_fu + 
-           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
-
-crPlots(m11, terms = "zwlog_cnct_g_imp_fu")
-
-tidy(m11, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m11_res
-
-# Dunedin 
-
-m12 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_cnct_g_imp_fu + cob_cde_fu + sex_cde_fu + 
-           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
-
-crPlots(m12, terms = "zwlog_cnct_g_imp_fu")
-
-tidy(m12, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m12_res
-
-## Serum amyloid A
-
-# Pheno
-
-m13 <- lm(zwAgeAccelPheno_fu ~ zwlog_saat_g_imp_fu + cob_cde_fu + sex_cde_fu + 
-           bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-         data = full)
-
-crPlots(m13, terms = "zwlog_saat_g_imp_fu")
-
-tidy(m13, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m13_res
-
-# grim
-
-m14 <- lm(zwAgeAccelGrim_fu ~ zwlog_saat_g_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m14, terms = "zwlog_saat_g_imp_fu")
-
-tidy(m14, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m14_res
-
-# Zhang
-
-m15 <- lm(zwAA.Zhang.cont_fu ~ zwlog_saat_g_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m15, terms = "zwlog_saat_g_imp_fu")
-
-tidy(m15, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m15_res
-
-# Dunedin 
-
-m16 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_saat_g_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m16, terms = "zwlog_saat_g_imp_fu")
-
-tidy(m16, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m16_res
-
-## calprotectin
-
-hist(full$zwlog_s100at_g_imp_fu)
-
-# Pheno
-
-m17 <- lm(zwAgeAccelPheno_fu ~ zwlog_s100at_g_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m17, terms = "zwlog_s100at_g_imp_fu")
-
-tidy(m17, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m17_res
-
-# grim
-
-m18 <- lm(zwAgeAccelGrim_fu ~ zwlog_s100at_g_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m18, terms = "zwlog_s100at_g_imp_fu")
-
-tidy(m18, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m18_res
-
-# Zhang
-
-m19 <- lm(zwAA.Zhang.cont_fu ~ zwlog_s100at_g_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m19, terms = "zwlog_s100at_g_imp_fu")
-
-tidy(m19, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m19_res
-
-# Dunedin 
-
-m20 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_s100at_g_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m20, terms = "zwlog_s100at_g_imp_fu")
-
-tidy(m20, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m20_res
-
-
-## interleukin 6
-
-# Pheno
-
-m21 <- lm(zwAgeAccelPheno_fu ~ zwlog_il6_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m21, terms = "zwlog_il6_msd_imp_fu2")
-
-tidy(m21, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m21_res
-
-# grim
-
-m22 <- lm(zwAgeAccelGrim_fu ~ zwlog_il6_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m22, terms = "zwlog_il6_msd_imp_fu2")
-
-tidy(m22, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m22_res
-
-# Zhang
-
-m23 <- lm(zwAA.Zhang.cont_fu ~ zwlog_il6_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m23, terms = "zwlog_il6_msd_imp_fu2")
-
-tidy(m23, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m23_res
-
-# Dunedin 
-
-m24 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_il6_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m24, terms = "zwlog_il6_msd_imp_fu2")
-
-tidy(m24, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m24_res
-
-## interleukin 8
-
-# Pheno
-
-m25 <- lm(zwAgeAccelPheno_fu ~ zwlog_il8_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m25, terms = "zwlog_il8_msd_imp_fu")
-
-tidy(m25, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m25_res
-
-# grim
-
-m26 <- lm(zwAgeAccelGrim_fu ~ zwlog_il8_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m26, terms = "zwlog_il8_msd_imp_fu")
-
-tidy(m26, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m26_res
-
-# Zhang
-
-m27 <- lm(zwAA.Zhang.cont_fu ~ zwlog_il8_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m27, terms = "zwlog_il8_msd_imp_fu")
-
-tidy(m27, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m27_res
-
-# Dunedin 
-
-m28 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_il8_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m28, terms = "zwlog_il8_msd_imp_fu")
-
-tidy(m28, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m28_res
-
-## interleukin 10
-
-# Pheno
-
-m29 <- lm(zwAgeAccelPheno_fu ~ zwlog_il10_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m29, terms = "zwlog_il10_msd_imp_fu2")
-
-tidy(m29, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m29_res
-
-# grim
-
-m30 <- lm(zwAgeAccelGrim_fu ~ zwlog_il10_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m30, terms = "zwlog_il10_msd_imp_fu2")
-
-tidy(m30, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m30_res
-
-# Zhang
-
-m31 <- lm(zwAA.Zhang.cont_fu ~ zwlog_il10_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m31, terms = "zwlog_il10_msd_imp_fu2")
-
-tidy(m31, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m31_res
-
-# Dunedin 
-
-m32 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_il10_msd_imp_fu2 + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m32, terms = "zwlog_il10_msd_imp_fu2")
-
-tidy(m32, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m32_res
-
-## Interferon-gamma
-
-# Pheno
-
-m33 <- lm(zwAgeAccelPheno_fu ~ zwlog_ifng_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m33, terms = "zwlog_ifng_msd_imp_fu")
-
-tidy(m33, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m33_res
-
-# grim
-
-m34 <- lm(zwAgeAccelGrim_fu ~ zwlog_ifng_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m34, terms = "zwlog_ifng_msd_imp_fu")
-
-tidy(m34, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m34_res
-
-# Zhang
-
-m35 <- lm(zwAA.Zhang.cont_fu ~ zwlog_ifng_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m35, terms = "zwlog_ifng_msd_imp_fu")
-
-tidy(m35, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m35_res
-
-# Dunedin 
-
-m36 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_ifng_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m36, terms = "zwlog_ifng_msd_imp_fu")
-
-tidy(m36, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m36_res
-
-## TNF-a
-hist(full$zwlog_tnfa_msd_imp_fu)
-# Pheno
-
-m37 <- lm(zwAgeAccelPheno_fu ~ zwlog_tnfa_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m37, terms = "zwlog_tnfa_msd_imp_fu")
-
-tidy(m37, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m37_res
-
-# grim
-
-m38 <- lm(zwAgeAccelGrim_fu ~ zwlog_tnfa_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m38, terms = "zwlog_tnfa_msd_imp_fu")
-
-tidy(m38, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m38_res
-
-# Zhang
-
-m39 <- lm(zwAA.Zhang.cont_fu ~ zwlog_tnfa_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m39, terms = "zwlog_tnfa_msd_imp_fu")
-
-tidy(m39, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m39_res
-
-# Dunedin 
-
-m40 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_tnfa_msd_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m40, terms = "zwlog_tnfa_msd_imp_fu")
-
-tidy(m40, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m40_res
-
-## tryptophan
-
-hist(full$zwlog_trp_d_imp_fu)
-
-# Pheno
-
-m41 <- lm(zwAgeAccelPheno_fu ~ zwlog_trp_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m41, terms = "zwlog_trp_d_imp_fu")
-
-tidy(m41, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m41_res
-
-# grim
-
-m42 <- lm(zwAgeAccelGrim_fu ~ zwlog_trp_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m42, terms = "zwlog_trp_d_imp_fu")
-
-tidy(m42, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m42_res
-
-# Zhang
-
-m43 <- lm(zwAA.Zhang.cont_fu ~ zwlog_trp_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m43, terms = "zwlog_trp_d_imp_fu")
-
-tidy(m43, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m43_res
-
-# Dunedin 
-
-m44 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_trp_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m44, terms = "zwlog_trp_d_imp_fu")
-
-tidy(m44, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m44_res
-
-
-## Kynurenine 
-
-hist(full$zwlog_kyn_d_imp_fu)
-
-# Pheno
-
-m45 <- lm(zwAgeAccelPheno_fu ~ zwlog_kyn_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m45, terms = "zwlog_kyn_d_imp_fu")
-
-tidy(m45, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m45_res
-
-# grim
-
-m46 <- lm(zwAgeAccelGrim_fu ~ zwlog_kyn_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m46, terms = "zwlog_kyn_d_imp_fu")
-
-tidy(m46, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m46_res
-
-# Zhang
-
-m47 <- lm(zwAA.Zhang.cont_fu ~ zwlog_kyn_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m47, terms = "zwlog_kyn_d_imp_fu")
-
-tidy(m47, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m47_res
-
-# Dunedin 
-
-m48 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_kyn_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m48, terms = "zwlog_kyn_d_imp_fu")
-
-tidy(m48, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m48_res
-
-## 3 hydroxykynurenine
-
-hist(full$zwlog_hk_d_imp_fu)
-
-# Pheno
-
-m49 <- lm(zwAgeAccelPheno_fu ~ zwlog_hk_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m49, terms = "zwlog_hk_d_imp_fu")
-
-tidy(m49, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m49_res
-
-# grim
-
-m50 <- lm(zwAgeAccelGrim_fu ~ zwlog_hk_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m50, terms = "zwlog_hk_d_imp_fu")
-
-tidy(m50, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m50_res
-
-# Zhang
-
-m51 <- lm(zwAA.Zhang.cont_fu ~ zwlog_hk_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m51, terms = "zwlog_hk_d_imp_fu")
-
-tidy(m51, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m51_res
-
-# Dunedin 
-
-m52 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_hk_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m52, terms = "zwlog_hk_d_imp_fu")
-
-tidy(m52, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m52_res
-
-
-## Kynurenic acid
-
-hist(full$zwlog_ka_d_imp_fu)
-
-
-# Pheno
-
-m53 <- lm(zwAgeAccelPheno_fu ~ zwlog_ka_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m53, terms = "zwlog_ka_d_imp_fu")
-
-tidy(m53, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m53_res
-
-# grim
-
-m54 <- lm(zwAgeAccelGrim_fu ~ zwlog_ka_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m54, terms = "zwlog_ka_d_imp_fu")
-
-tidy(m54, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m54_res
-
-# Zhang
-
-m55 <- lm(zwAA.Zhang.cont_fu ~ zwlog_ka_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m55, terms = "zwlog_ka_d_imp_fu")
-
-tidy(m55, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m55_res
-
-# Dunedin 
-
-m56 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_ka_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m56, terms = "zwlog_ka_d_imp_fu")
-
-tidy(m56, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m56_res
-
-
-## Xanthurenic acid
-
-hist(full$zwlog_xa_d_imp_fu)
-
-# Pheno
-
-m57 <- lm(zwAgeAccelPheno_fu ~ zwlog_xa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m57, terms = "zwlog_xa_d_imp_fu")
-
-tidy(m57, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m57_res
-
-# grim
-
-m58 <- lm(zwAgeAccelGrim_fu ~ zwlog_xa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m58, terms = "zwlog_xa_d_imp_fu")
-
-tidy(m58, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m58_res
-
-# Zhang
-
-m59 <- lm(zwAA.Zhang.cont_fu ~ zwlog_xa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m59, terms = "zwlog_xa_d_imp_fu")
-
-tidy(m59, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m59_res
-
-# Dunedin 
-
-m60 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_xa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m60, terms = "zwlog_xa_d_imp_fu")
-
-tidy(m60, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m60_res
-
-
-## Anthranilic acid
-
-hist(full$zwlog_aa_d_imp_fu)
-
-# Pheno
-
-m61 <- lm(zwAgeAccelPheno_fu ~ zwlog_aa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m61, terms = "zwlog_aa_d_imp_fu")
-
-tidy(m61, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m61_res
-
-# grim
-
-m62 <- lm(zwAgeAccelGrim_fu ~ zwlog_aa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m62, terms = "zwlog_aa_d_imp_fu")
-
-tidy(m62, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m62_res
-
-# Zhang
-
-m63 <- lm(zwAA.Zhang.cont_fu ~ zwlog_aa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m63, terms = "zwlog_aa_d_imp_fu")
-
-tidy(m63, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m63_res
-
-# Dunedin 
-
-m64 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_aa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m64, terms = "zwlog_aa_d_imp_fu")
-
-tidy(m64, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m64_res
-
-
-## 3-hydroxyanthranilic acid
-
-hist(full$zwlog_haa_d_imp_fu)
-
-# Pheno
-
-m65 <- lm(zwAgeAccelPheno_fu ~ zwlog_haa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m65, terms = "zwlog_haa_d_imp_fu")
-
-tidy(m65, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m65_res
-
-# grim
-
-m66 <- lm(zwAgeAccelGrim_fu ~ zwlog_haa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m66, terms = "zwlog_haa_d_imp_fu")
-
-tidy(m66, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m66_res
-
-# Zhang
-
-m67 <- lm(zwAA.Zhang.cont_fu ~ zwlog_haa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m67, terms = "zwlog_haa_d_imp_fu")
-
-tidy(m67, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m67_res
-
-# Dunedin 
-
-m68 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_haa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m68, terms = "zwlog_haa_d_imp_fu")
-
-tidy(m68, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m68_res
-
-## Picolinic acid
-
-hist(full$zwlog_pic_d_imp_fu)
-
-
-# Pheno
-
-m69 <- lm(zwAgeAccelPheno_fu ~ zwlog_pic_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m69, terms = "zwlog_pic_d_imp_fu")
-
-tidy(m69, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m69_res
-
-# grim
-
-m70 <- lm(zwAgeAccelGrim_fu ~ zwlog_pic_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m70, terms = "zwlog_pic_d_imp_fu")
-
-tidy(m70, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m70_res
-
-# Zhang
-
-m71 <- lm(zwAA.Zhang.cont_fu ~ zwlog_pic_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m71, terms = "zwlog_pic_d_imp_fu")
-
-tidy(m71, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m71_res
-
-# Dunedin 
-
-m72 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_pic_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m72, terms = "zwlog_pic_d_imp_fu")
-
-tidy(m72, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m72_res
-
-
-## Quinolinic acid
-
-hist(full$zwlog_qa_d_imp_fu)
-
-# Pheno
-
-m73 <- lm(zwAgeAccelPheno_fu ~ zwlog_qa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m73, terms = "zwlog_qa_d_imp_fu")
-
-tidy(m73, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m73_res
-
-# grim
-
-m74 <- lm(zwAgeAccelGrim_fu ~ zwlog_qa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m74, terms = "zwlog_qa_d_imp_fu")
-
-tidy(m74, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m74_res
-
-# Zhang
-
-m75 <- lm(zwAA.Zhang.cont_fu ~ zwlog_qa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m75, terms = "zwlog_qa_d_imp_fu")
-
-tidy(m75, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m75_res
-
-# Dunedin 
-
-m76 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_qa_d_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m76, terms = "zwlog_qa_d_imp_fu")
-
-tidy(m76, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m76_res
-
-## KTR 
-
-hist(full$zwlog_KTr_imp_fu)
-
-# Pheno
-
-m77 <- lm(zwAgeAccelPheno_fu ~ zwlog_KTr_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m77, terms = "zwlog_KTr_imp_fu")
-
-tidy(m77, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m77_res
-
-# grim
-
-m78 <- lm(zwAgeAccelGrim_fu ~ zwlog_KTr_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m78, terms = "zwlog_KTr_imp_fu")
-
-tidy(m78, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m78_res
-
-# Zhang
-
-m79 <- lm(zwAA.Zhang.cont_fu ~ zwlog_KTr_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m79, terms = "zwlog_KTr_imp_fu")
-
-tidy(m79, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m79_res
-
-# Dunedin 
-
-m80 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_KTr_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m80, terms = "zwlog_KTr_imp_fu")
-
-tidy(m80, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m80_res
-
-
-## PAr index 
-
-hist(full$zwlog_PAr_imp_fu)
-
-# Pheno
-
-m81 <- lm(zwAgeAccelPheno_fu ~ zwlog_PAr_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m81, terms = "zwlog_PAr_imp_fu")
-
-tidy(m81, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m81_res
-
-# grim
-
-m82 <- lm(zwAgeAccelGrim_fu ~ zwlog_PAr_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m82, terms = "zwlog_PAr_imp_fu")
-
-tidy(m82, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m82_res
-
-# Zhang
-
-m83 <- lm(zwAA.Zhang.cont_fu ~ zwlog_PAr_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m83, terms = "zwlog_PAr_imp_fu")
-
-tidy(m83, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m83_res
-
-# Dunedin 
-
-m84 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_PAr_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m84, terms = "zwlog_PAr_imp_fu")
-
-tidy(m84, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m84_res
-
-
-## HK:Xa
-
-hist(full$zwlog_HKXAr_imp_fu)
-
-# Pheno
-
-m85 <- lm(zwAgeAccelPheno_fu ~ zwlog_HKXAr_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m85, terms = "zwlog_HKXAr_imp_fu")
-
-tidy(m85, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zwlog")) -> m85_res
-
-# grim
-
-m86 <- lm(zwAgeAccelGrim_fu ~ zwlog_HKXAr_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m86, terms = "zwlog_HKXAr_imp_fu")
-
-tidy(m86, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zwlog")) -> m86_res
-
-# Zhang
-
-m87 <- lm(zwAA.Zhang.cont_fu ~ zwlog_HKXAr_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m87, terms = "zwlog_HKXAr_imp_fu")
-
-tidy(m87, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zwlog")) -> m87_res
-
-# Dunedin 
-
-m88 <- lm(zwAA.DunedinPoAm_fu ~ zwlog_HKXAr_imp_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m88, terms = "zwlog_HKXAr_imp_fu")
-
-tidy(m88, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zwlog")) -> m88_res
-
-
-## inflammaging
-
-hist(full$zwinflamm_sig_fu)
-
-# Pheno
-
-m89 <- lm(zwAgeAccelPheno_fu ~ zwinflamm_sig_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m89, terms = "zwinflamm_sig_fu")
-
-tidy(m89, conf.int = T) %>% 
-  mutate(clock = "pheno") %>% 
-  filter(str_detect(term, "zw")) -> m89_res
-
-# grim
-
-m90 <- lm(zwAgeAccelGrim_fu ~ zwinflamm_sig_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m90, terms = "zwinflamm_sig_fu")
-
-tidy(m90, conf.int = T) %>% 
-  mutate(clock = "grim") %>% 
-  filter(str_detect(term, "zw")) -> m90_res
-
-# Zhang
-
-m91 <- lm(zwAA.Zhang.cont_fu ~ zwinflamm_sig_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m91, terms = "zwinflamm_sig_fu")
-
-tidy(m91, conf.int = T) %>% 
-  mutate(clock = "zhang") %>% 
-  filter(str_detect(term, "zw")) -> m91_res
-
-# Dunedin 
-
-m92 <- lm(zwAA.DunedinPoAm_fu ~ zwinflamm_sig_fu + cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct, 
-          data = full)
-
-crPlots(m92, terms = "zwinflamm_sig_fu")
-
-tidy(m92, conf.int = T) %>% 
-  mutate(clock = "dunedin") %>% 
-  filter(str_detect(term, "zw")) -> m92_res
-
-
-#### Forest plot ####
-
-plot_data <- mget(ls(pattern="_res")) %>%
-  bind_rows() %>% 
-  filter(!is.na(term)) %>% 
-  select(term, estimate, std.error, statistic, p.value, conf.low, conf.high, clock)
-
-head(plot_data)
-
-plot_data <- plot_data %>% 
+bl_sf3 <- 
+  
+  # every combination of biomarker and AgeAccel
+  
+  crossing(Var1 = xs, Var2 = ys) %>%
+  
+  # perform linear regression adjusted for age and sex and save results
+  
+  mutate(frm = str_c(Var2, Var1, sep = " ~ bmi_rrto_imp_bl + cigst_cde_imp_bl + seifa_10_imp_bl + sex_cde_bl + cob_cde_bl + "),  
+         models = map(frm, 
+                      ~tidy(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  
+  # Drop unneeded parameters and rename variables for plotting 
+  
+  select(-Var1, -frm) %>% 
+  rename('clock' = Var2) %>% 
+  filter(!term %in% c("(Intercept)", "sex_cde_blMale", "cob_cde_blNorthern Europe", "cob_cde_blSouthern Europe",
+                      "bmi_rrto_imp_bl", "cigst_cde_imp_blCurrent", "cigst_cde_imp_blFormer", "seifa_10_imp_bl")) %>% 
   mutate(term = str_replace(term, "zwlog_", "")) %>% 
   mutate(term = sub("_.*", "", .$term)) %>% 
   mutate(term = str_to_upper(term)) %>% 
   mutate(clock = dplyr::recode(clock,
-                               dunedin = "AgeAccelDunedin",
-                               grim = "AgeAccelGrim",
-                               pheno = "AgeAccelPheno",
-                               zhang = "AgeAccelZhang")) %>% 
+                               zwAA.DunedinPoAm_bl = "AgeAccelDunedin",
+                               zwAA.Zhang.cont_bl = "AgeAccelZhang",
+                               zwAgeAccelGrim_bl = "AgeAccelGrim",
+                               zwAgeAccelPheno_bl = "AgeAccelPheno")) %>% 
   mutate(term2 = dplyr::recode(term,
-                WAA.ZHANG.CONT = "AgeAccelZhang",
-                WAA.DUNEDINPOAM = "AgeAccelDunedin",
-                WAGEACCELGRIM = "AgeAccelGrim",
-                WAGEACCELPHENO = "AgeAccelPheno",
-                ZWINFLAMM = "Inflammaging signature",
-                NEOPT = "Neopterin",
-                CNCT = "Cystatin C",
-                S100AT = "Calprotectin",
-                SAAT = "Serum amyloid A",
-                IL8 = "Interleukin-8",
-                IL10 = "Interleukin-10",
-                IFNG = "Interferon-g",
-                TNFA = "TNF-a",
-                TRP = "Tryptophan",
-                KYN = "Kynurenine",
-                HK = "3-Hydroxykynurenine",
-                KA = "Kynurenic acid",
-                XA = "Xanthurenic acid",
-                AA = "Anthranilic acid",
-                HAA = "3-Hydroxyanthranilic acid",
-                PIC = "Piconilic acid",
-                QA = "Quinolinic acid",
-                KTR = "KTr",
-                PAR = "PAr",
-                HKXAR = "HK:XA",
-                CRP = "C-reactive protein",
-                IL6 = "Interleukin-6"))
+                               ZWINFLAMM = "Inflammaging signature",
+                               NEOPT = "Neopterin",
+                               CNCT = "Cystatin C",
+                               S100AT = "Calprotectin",
+                               SAAT = "Serum amyloid A",
+                               IL8 = "Interleukin-8",
+                               IL10 = "Interleukin-10",
+                               IFNG = "Interferon-g",
+                               TNFA = "TNF-a",
+                               TRP = "Tryptophan",
+                               KYN = "Kynurenine",
+                               HK = "3-Hydroxykynurenine",
+                               KA = "Kynurenic acid",
+                               XA = "Xanthurenic acid",
+                               AA = "Anthranilic acid",
+                               HAA = "3-Hydroxyanthranilic acid",
+                               PIC = "Piconilic acid",
+                               QA = "Quinolinic acid",
+                               KTR = "KTr",
+                               PAR = "PAr",
+                               HKXAR = "HK:XA",
+                               CRP = "C-reactive protein",
+                               IL6 = "Interleukin-6"))
+
+
+## plot ## 
 
 order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
             "Calprotectin", "Cystatin C", "Serum amyloid A",
@@ -1821,51 +1263,397 @@ order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
             "Xanthurenic acid", "Anthranilic acid", "3-Hydroxyanthranilic acid",
             "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
 
-plot_data %>% 
+bl_sf3 %>% 
   ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
   geom_vline(xintercept = 0) +
   geom_pointrange(aes(xmin = conf.low,
-                 xmax = conf.high),
-                 size = 0.25) +
+                      xmax = conf.high),
+                  fatten = 4) +
   facet_wrap(~ clock, nrow = 1) +
   theme_stata() +
   theme(axis.text.y = element_text(angle = 0)) +
-  labs(x = "Estimate, 95% CI", y = "")
+  labs(x = "Estimate, 95% CI", y = "") +
+  xlim(c(-0.4, 0.4)) +
+  theme(panel.spacing.x = unit(1, "lines"))
 
-ggsave("Follow-up forest.png", device = "png",
+
+ggsave("BL supplementary figure 3.png", device = "png",
+       height = 7, width = 10)
+
+## Compare to unadjusted results
+
+bl_sf3 %>% 
+  mutate(unadj_est = bl_cs_results$estimate) %>% 
+  mutate(dif = estimate - unadj_est) %>% 
+  group_by(clock) %>% 
+  summarise(mean = mean(dif))
+
+### Supplementary figure 4 - Cross sectional association at FU ###
+
+# create vector including all FU biomarker variables names
+
+xs <- paste("zwlog_", marker_names, sep = "")
+
+xs <- full %>% 
+  select(all_of(xs), zwinflamm_sig_fu) %>% 
+  select(ends_with("fu"), ends_with("fu2")) %>% 
+  select(-zwlog_cysta_d_imp_fu) %>% 
+  names()
+
+# create vector of all epigenetic ageing variables 
+
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+
+# regression for each combination of biomarker and epigenetic ageing variable 
+
+
+fu_cs_results <- crossing(Var1 = xs, Var2 = ys) %>%
+  mutate(frm = str_c(Var2, Var1, sep = " ~ bmi_rrto_imp_fu + cigst_cde_imp_fu + seifa_10_imp_fu + sex_cde_fu + cob_cde_fu + "),  
+         models = map(frm, 
+                      ~tidy(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  select(-Var1, -frm) %>% 
+  rename('clock' = Var2) %>% 
+  filter(!term %in% c("(Intercept)", "sex_cde_fuMale", "cob_cde_fuNorthern Europe", "cob_cde_fuSouthern Europe")) %>% 
+  mutate(term = str_replace(term, "zwlog_", "")) %>% 
+  mutate(term = sub("_.*", "", .$term)) %>% 
+  mutate(term = str_to_upper(term)) %>% 
+  mutate(clock = dplyr::recode(clock,
+                               zwAA.DunedinPoAm_fu = "AgeAccelDunedin",
+                               zwAA.Zhang.cont_fu = "AgeAccelZhang",
+                               zwAgeAccelGrim_fu = "AgeAccelGrim",
+                               zwAgeAccelPheno_fu = "AgeAccelPheno")) %>% 
+  mutate(term2 = dplyr::recode(term,
+                               ZWINFLAMM = "Inflammaging signature",
+                               NEOPT = "Neopterin",
+                               CNCT = "Cystatin C",
+                               S100AT = "Calprotectin",
+                               SAAT = "Serum amyloid A",
+                               IL8 = "Interleukin-8",
+                               IL10 = "Interleukin-10",
+                               IFNG = "Interferon-g",
+                               TNFA = "TNF-a",
+                               TRP = "Tryptophan",
+                               KYN = "Kynurenine",
+                               HK = "3-Hydroxykynurenine",
+                               KA = "Kynurenic acid",
+                               XA = "Xanthurenic acid",
+                               AA = "Anthranilic acid",
+                               HAA = "3-Hydroxyanthranilic acid",
+                               PIC = "Piconilic acid",
+                               QA = "Quinolinic acid",
+                               KTR = "KTr",
+                               PAR = "PAr",
+                               HKXAR = "HK:XA",
+                               CRP = "C-reactive protein",
+                               IL6 = "Interleukin-6"))
+
+# strongest results 
+
+fu_cs_results %>% 
+  select(clock, term2, estimate, p.value) %>% 
+  arrange(p.value)
+
+# proportion with p < Bonferroni threshold (0.0021)
+
+fu_cs_results %>% 
+  mutate(sig = if_else(p.value < 0.0021, "Yes", "No")) %>% 
+  group_by(sig) %>% 
+  tally() %>% 
+  mutate(percent = n/sum(n) * 100)
+
+# proportion with estimate > 0 
+
+fu_cs_results %>% 
+  mutate(sig = if_else(p.value < 0.0021, "Yes", "No")) %>% 
+  mutate(positive = if_else(estimate > 0, "Yes", "No")) %>% 
+  group_by(sig, positive) %>% 
+  tally() %>% 
+  mutate(percent = n/sum(n) * 100)
+
+## plot ## 
+
+order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
+            "Calprotectin", "Cystatin C", "Serum amyloid A",
+            "Interferon-g","TNF-a", "Interleukin-6", 
+            "Interleukin-8", "Interleukin-10","Kynurenine",
+            "Tryptophan", "3-Hydroxykynurenine","Kynurenic acid",
+            "Xanthurenic acid", "Anthranilic acid", "3-Hydroxyanthranilic acid",
+            "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
+
+fu_cs_results %>% 
+  ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
+  geom_vline(xintercept = 0) +
+  geom_pointrange(aes(xmin = conf.low,
+                      xmax = conf.high),
+                  fatten = 4) +
+  facet_wrap(~ clock, nrow = 1) +
+  theme_stata() +
+  theme(axis.text.y = element_text(angle = 0)) +
+  labs(x = "Estimate, 95% CI", y = "") +
+  xlim(c(-0.4, 0.4)) +
+  theme(panel.spacing.x = unit(1, "lines"))
+
+
+ggsave("follow-up forest.png", device = "png",
        height = 7, width = 10)
 
 
+#### Figure 3 - Prospective associations #### 
 
-#### overall R squared ####
+# create vector including all BL biomarker variables names
 
-### follow-up ###
+xs <- paste("zwlog_", marker_names, sep = "")
 
-predictors <- full %>% 
-  select(starts_with("zwlog_"), zwinflamm_sig_fu) %>% 
-  select(ends_with("fu"), ends_with("fu2")) %>% 
+xs <- full %>% 
+  select(all_of(xs), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  select(-zwlog_cysta_d_imp_bl) %>% 
   names()
 
-predictors <- paste(predictors, collapse = " + ")
+# create vector of all epigenetic ageing variables 
 
-m1 <- ols(zwAgeAccelGrim_fu ~ cigst_cde_fu, data = full,
-          x = T, y = T)
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
 
-m1
+# regression for each combination of biomarker and epigenetic ageing variable 
 
-validate(m1, B = 1000)
+prosp_results <- 
+  
+  # all combinations of biomarker and AgeAccel vars
+  
+  crossing(Var1 = xs, Var2 = ys) %>%
+  
+  # create formula for each regression model 
+  
+  mutate(frm = str_c(Var2, Var1, sep = " ~ sex_cde_fu + cob_cde_fu + ")) %>% 
+  
+  # Add baseline AgeAccel variable to formula 
+  
+  mutate(Var3 = sub("_fu", "_bl", Var2)) %>% 
+  mutate(frm = str_c(frm, Var3, sep = " + ")) %>% 
+  select(-Var3) %>% 
+  
+  # Regressions and save results 
+  
+  mutate(models = map(frm, 
+                      ~tidy(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  
+  # format results for plotting 
+  
+  select(-Var1, -frm) %>% 
+  rename('clock' = Var2) %>% 
+  filter(str_detect(term, "_bl"), !term %in% c("zwAA.DunedinPoAm_bl", "zwAA.Zhang.cont_bl", "zwAgeAccelGrim_bl", "zwAgeAccelPheno_bl")) %>% 
+  mutate(term = str_replace(term, "zwlog_", "")) %>% 
+  mutate(term = sub("_.*", "", .$term)) %>% 
+  mutate(term = str_to_upper(term)) %>% 
+  mutate(clock = dplyr::recode(clock,
+                               zwAA.DunedinPoAm_fu = "AgeAccelDunedin",
+                               zwAA.Zhang.cont_fu = "AgeAccelZhang",
+                               zwAgeAccelGrim_fu = "AgeAccelGrim",
+                               zwAgeAccelPheno_fu = "AgeAccelPheno")) %>% 
+  mutate(term2 = dplyr::recode(term,
+                               ZWINFLAMM = "Inflammaging signature",
+                               NEOPT = "Neopterin",
+                               CNCT = "Cystatin C",
+                               S100AT = "Calprotectin",
+                               SAAT = "Serum amyloid A",
+                               IL8 = "Interleukin-8",
+                               IL10 = "Interleukin-10",
+                               IFNG = "Interferon-g",
+                               TNFA = "TNF-a",
+                               TRP = "Tryptophan",
+                               KYN = "Kynurenine",
+                               HK = "3-Hydroxykynurenine",
+                               KA = "Kynurenic acid",
+                               XA = "Xanthurenic acid",
+                               AA = "Anthranilic acid",
+                               HAA = "3-Hydroxyanthranilic acid",
+                               PIC = "Piconilic acid",
+                               QA = "Quinolinic acid",
+                               KTR = "KTr",
+                               PAR = "PAr",
+                               HKXAR = "HK:XA",
+                               CRP = "C-reactive protein",
+                               IL6 = "Interleukin-6"))
 
-m2 <- ols(zwAgeAccelGrim_fu ~ cob_cde_fu + sex_cde_fu + 
-            bmi_rrto_fu + cigst_cde_fu + educlvl_ord_fu + age_fu_correct +
-            zwlog_neopt_d_imp_fu + zwlog_cnct_g_imp_fu + zwlog_s100at_g_imp_fu + zwlog_saat_g_imp_fu + 
-            zwlog_il8_msd_imp_fu + zwlog_ifng_msd_imp_fu + zwlog_tnfa_msd_imp_fu + 
-            zwlog_trp_d_imp_fu + zwlog_kyn_d_imp_fu + zwlog_hk_d_imp_fu + zwlog_ka_d_imp_fu +
-            zwlog_xa_d_imp_fu + zwlog_aa_d_imp_fu + zwlog_haa_d_imp_fu + zwlog_pic_d_imp_fu + 
-            zwlog_qa_d_imp_fu + zwlog_KTr_imp_fu + zwlog_PAr_imp_fu + zwlog_HKXAr_imp_fu + 
-            zwlog_cysta_d_imp_fu + zwinflamm_sig_fu + zwlog_crp_g_imp_fu2 + zwlog_il6_msd_imp_fu2 + 
-            zwlog_il10_msd_imp_fu2, data = full,
-          x = T, y = T)
+# strongest results 
 
-m2
+prosp_results %>% 
+  select(clock, term2, estimate, p.value) %>% 
+  arrange(p.value)
 
-validate(m2, B = 1000)
+# proportion with p < Bonferroni threshold (0.0021)
+
+prosp_results %>% 
+  mutate(sig = if_else(p.value < 0.0021, "Yes", "No")) %>% 
+  group_by(sig) %>% 
+  tally() %>% 
+  mutate(percent = n/sum(n) * 100)
+
+
+## plot ## 
+
+order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
+            "Calprotectin", "Cystatin C", "Serum amyloid A",
+            "Interferon-g","TNF-a", "Interleukin-6", 
+            "Interleukin-8", "Interleukin-10","Kynurenine",
+            "Tryptophan", "3-Hydroxykynurenine","Kynurenic acid",
+            "Xanthurenic acid", "Anthranilic acid", "3-Hydroxyanthranilic acid",
+            "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
+
+prosp_results %>% 
+  ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
+  geom_vline(xintercept = 0) +
+  geom_pointrange(aes(xmin = conf.low,
+                      xmax = conf.high),
+                  fatten = 4) +
+  facet_wrap(~ clock, nrow = 1) +
+  theme_stata() +
+  theme(axis.text.y = element_text(angle = 0)) +
+  labs(x = "Estimate, 95% CI", y = "") +
+  xlim(c(-0.4, 0.4)) +
+  theme(panel.spacing.x = unit(1, "lines"))
+
+
+ggsave("Prospective forest.png", device = "png",
+       height = 7, width = 10)
+
+
+#### Figure 4 - Change over time ####
+
+# create vector including all BL biomarker variables names
+
+xs <- paste("zwlog_", marker_names, sep = "")
+
+xs <- full %>% 
+  select(all_of(xs), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  select(-zwlog_cysta_d_imp_bl) %>% 
+  names()
+
+# create vector of all epigenetic ageing variables 
+
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+
+# regression for each combination of biomarker and epigenetic ageing variable 
+
+change_results <- 
+  
+  # create formulas with confounder variables 
+  
+  crossing(Var1 = xs, Var2 = ys) %>%
+  mutate(frm = str_c(Var2, Var1, sep = " ~ sex_cde_fu + cob_cde_fu + ")) %>% 
+  
+  # Add baseline AgeAccel and baseline biomarker variables to each model
+  
+  mutate(Var3 = sub("_fu", "_bl", Var2)) %>% 
+  mutate(Var4 = sub("_bl", "_fu", Var1)) %>% 
+  
+  # Correct variable names
+  
+  mutate(Var4 = dplyr::recode(Var4,
+                              zwlog_ifng_msd_imp_fu2 = 'zwlog_ifng_msd_imp_fu',
+                              zwlog_saat_g_imp_fu2 = 'zwlog_saat_g_imp_fu',
+                              zwlog_il6_msd_imp_fu = 'zwlog_il6_msd_imp_fu2'
+  )) %>% 
+  
+  # add confounders to regression
+  
+  mutate(frm = str_c(frm, Var3, sep = " + ")) %>% 
+  mutate(frm = str_c(frm, Var4, sep = " + ")) %>% 
+  select(-Var3, -Var4) %>% 
+  
+  # regressions 
+  
+  mutate(models = map(frm, 
+                      ~tidy(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  select(-Var1, -frm) %>% 
+  
+  # prepare data for plotting 
+  
+  rename('clock' = Var2) %>% 
+  filter(str_detect(term, "imp_fu") | str_detect(term, "sig_fu")) %>% 
+  mutate(term = str_replace(term, "zwlog_", "")) %>% 
+  mutate(term = sub("_.*", "", .$term)) %>% 
+  mutate(term = str_to_upper(term)) %>% 
+  mutate(clock = dplyr::recode(clock,
+                               zwAA.DunedinPoAm_fu = "AgeAccelDunedin",
+                               zwAA.Zhang.cont_fu = "AgeAccelZhang",
+                               zwAgeAccelGrim_fu = "AgeAccelGrim",
+                               zwAgeAccelPheno_fu = "AgeAccelPheno")) %>% 
+  mutate(term2 = dplyr::recode(term,
+                               ZWINFLAMM = "Inflammaging signature",
+                               NEOPT = "Neopterin",
+                               CNCT = "Cystatin C",
+                               S100AT = "Calprotectin",
+                               SAAT = "Serum amyloid A",
+                               IL8 = "Interleukin-8",
+                               IL10 = "Interleukin-10",
+                               IFNG = "Interferon-g",
+                               TNFA = "TNF-a",
+                               TRP = "Tryptophan",
+                               KYN = "Kynurenine",
+                               HK = "3-Hydroxykynurenine",
+                               KA = "Kynurenic acid",
+                               XA = "Xanthurenic acid",
+                               AA = "Anthranilic acid",
+                               HAA = "3-Hydroxyanthranilic acid",
+                               PIC = "Piconilic acid",
+                               QA = "Quinolinic acid",
+                               KTR = "KTr",
+                               PAR = "PAr",
+                               HKXAR = "HK:XA",
+                               CRP = "C-reactive protein",
+                               IL6 = "Interleukin-6"))
+
+# strongest results 
+
+change_results %>% 
+  select(clock, term2, estimate, p.value) %>% 
+  arrange(p.value) %>% 
+  print(n = 50)
+
+# proportion with p < Bonferroni threshold (0.0021)
+
+change_results %>% 
+  mutate(sig = if_else(p.value < 0.0021, "Yes", "No")) %>% 
+  group_by(sig) %>% 
+  tally() %>% 
+  mutate(percent = n/sum(n) * 100)
+
+# proportion with estimate > 0 
+
+change_results %>% 
+  mutate(sig = if_else(p.value < 0.0021, "Yes", "No")) %>% 
+  mutate(positive = if_else(estimate > 0, "Yes", "No")) %>% 
+  group_by(sig, positive) %>% 
+  tally() %>% 
+  mutate(percent = n/sum(n) * 100)
+
+## plot ## 
+
+order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
+            "Calprotectin", "Cystatin C", "Serum amyloid A",
+            "Interferon-g","TNF-a", "Interleukin-6", 
+            "Interleukin-8", "Interleukin-10","Kynurenine",
+            "Tryptophan", "3-Hydroxykynurenine","Kynurenic acid",
+            "Xanthurenic acid", "Anthranilic acid", "3-Hydroxyanthranilic acid",
+            "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
+
+change_results %>% 
+  ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
+  geom_vline(xintercept = 0) +
+  geom_pointrange(aes(xmin = conf.low,
+                      xmax = conf.high),
+                  fatten = 4) +
+  facet_wrap(~ clock, nrow = 1) +
+  theme_stata() +
+  theme(axis.text.y = element_text(angle = 0)) +
+  labs(x = "Estimate, 95% CI", y = "") +
+  xlim(c(-0.4, 0.4)) +
+  theme(panel.spacing.x = unit(1, "lines"))
+
+ggsave("Longitudinal forest.png", device = "png",
+       height = 7, width = 10)
