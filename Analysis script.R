@@ -9,6 +9,7 @@ library(broom)
 library(ggthemes)
 library(knitr)
 library(car)
+library(glmnet)
 
 #### Prepare data ####
 
@@ -92,13 +93,25 @@ full <- left_join(full, LP.Age, by = "h2_id")
 
 # remove rows without follow-up epigenetic age
 
-full <- full %>% filter(!is.na(AgeAccelGrim_fu))
+full <- full %>% filter(!is.na(DNAmGrimAge_fu))
 
 # Calculate time to follow-up
 
 full <- full %>% mutate(time_fu = age_fu_correct - age_bl_correct)
 
 hist(full$time_fu, breaks = 50) # minimum of 9 years 
+
+# Calculate age acceleration variables
+
+full <- full %>% 
+  mutate(AgeAccelGrim_bl = residuals(lm(DNAmGrimAge_bl ~ age_bl_correct, data = full)),
+         AgeAccelGrim_fu = residuals(lm(DNAmGrimAge_fu ~ age_fu_correct, data = full)),
+         AgeAccelZhang_bl = residuals(lm(score.Zhang.cont_bl ~ age_bl_correct, data = full)),
+         AgeAccelZhang_fu = residuals(lm(score.Zhang.cont_fu ~ age_fu_correct, data = full)),
+         AgeAccelDunedin_bl = residuals(lm(DunedinPoAm_bl ~ age_bl_correct, data = full)),
+         AgeAccelDunedin_fu = residuals(lm(DunedinPoAm_fu ~ age_fu_correct, data = full)),
+         AgeAccelPheno_bl = residuals(lm(DNAmPhenoAge_bl ~ age_bl_correct, data = full)),
+         AgeAccelPheno_fu = residuals(lm(DNAmPhenoAge_fu ~ age_fu_correct, data = full)))
 
 #### Table 1: baseline demographics ####
 
@@ -265,8 +278,8 @@ full <- full %>%
 # winsorise epigenetic age variables
 
 epi_vars <- full %>% 
-  select(contains("grim"), contains("pheno"),
-         contains("dunedin"), contains("zhang")) %>% 
+  select(starts_with("AgeAccel")) %>% 
+  select(-contains("Residual")) %>% 
   names()
 
 full <- full %>% 
@@ -276,8 +289,8 @@ full <- full %>%
 # standardize epigenetic ageing measures 
 
 full <- full %>% 
-  mutate(across(c("wAA.Zhang.cont_fu", "wAA.DunedinPoAm_fu", "wAgeAccelGrim_fu",
-                  "wAgeAccelPheno_fu", "wAA.Zhang.cont_bl", "wAA.DunedinPoAm_bl",
+  mutate(across(c("wAgeAccelZhang_fu", "wAgeAccelDunedin_fu", "wAgeAccelGrim_fu",
+                  "wAgeAccelPheno_fu", "wAgeAccelZhang_bl", "wAgeAccelDunedin_bl",
                   "wAgeAccelGrim_bl", "wAgeAccelPheno_bl"), scale,
                 .names = "z{.col}"))
 
@@ -295,8 +308,8 @@ full %>% select(wlog_ifng_msd_imp_fu:wlog_cysta_d_imp_fu) %>%
 full %>% 
   select(wAgeAccelGrim_bl, wAgeAccelGrim_fu,
          wAgeAccelPheno_bl, wAgeAccelPheno_fu,
-         wAA.DunedinPoAm_bl, wAA.DunedinPoAm_fu,
-         wAA.Zhang.cont_bl, wAA.Zhang.cont_fu) %>% 
+         wAgeAccelDunedin_bl, wAgeAccelDunedin_fu,
+         wAgeAccelZhang_bl, wAgeAccelZhang_fu) %>% 
   multi.hist(global = F)
 
 ### calculate inflammaging signature from baseline and follow-up inflam data
@@ -399,7 +412,6 @@ full$sex_cde_bl <- as.factor(full$sex_cde_bl)
 
 full$sex_cde_fu <- as.factor(full$sex_cde_fu)
 
-
 #### Figure 1 - Cross sectional association at BL #### 
 
 # create vector including all baseline biomarker variables names
@@ -415,7 +427,7 @@ xs <- full %>%
 
 # create vector of all epigenetic ageing variables 
 
-ys <- c("zwAgeAccelPheno_bl", "zwAgeAccelGrim_bl", "zwAA.Zhang.cont_bl", "zwAA.DunedinPoAm_bl")
+ys <- c("zwAgeAccelPheno_bl", "zwAgeAccelGrim_bl", "zwAgeAccelZhang_bl", "zwAgeAccelDunedin_bl")
 
 # regression for each combination of biomarker and AgeAccel variable 
 
@@ -442,8 +454,8 @@ bl_cs_results <-
   mutate(term = sub("_.*", "", .$term)) %>% 
   mutate(term = str_to_upper(term)) %>% 
   mutate(clock = dplyr::recode(clock,
-                               zwAA.DunedinPoAm_bl = "AgeAccelDunedin",
-                               zwAA.Zhang.cont_bl = "AgeAccelZhang",
+                               zwAgeAccelDunedin_bl = "AgeAccelDunedin",
+                               zwAgeAccelZhang_bl = "AgeAccelZhang",
                                zwAgeAccelGrim_bl = "AgeAccelGrim",
                                zwAgeAccelPheno_bl = "AgeAccelPheno")) %>% 
   mutate(term2 = dplyr::recode(term,
@@ -515,7 +527,7 @@ xs <- full %>%
 
 # create vector of all epigenetic ageing variables 
 
-ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAgeAccelZhang_fu", "zwAgeAccelDunedin_fu")
 
 # regression for each combination of biomarker and epigenetic ageing variable 
 
@@ -532,8 +544,8 @@ fu_cs_results <- crossing(Var1 = xs, Var2 = ys) %>%
   mutate(term = sub("_.*", "", .$term)) %>% 
   mutate(term = str_to_upper(term)) %>% 
   mutate(clock = dplyr::recode(clock,
-                               zwAA.DunedinPoAm_fu = "AgeAccelDunedin",
-                               zwAA.Zhang.cont_fu = "AgeAccelZhang",
+                               zwAgeAccelDunedin_fu = "AgeAccelDunedin",
+                               zwAgeAccelZhang_fu = "AgeAccelZhang",
                                zwAgeAccelGrim_fu = "AgeAccelGrim",
                                zwAgeAccelPheno_fu = "AgeAccelPheno")) %>% 
   mutate(term2 = dplyr::recode(term,
@@ -604,7 +616,7 @@ xs <- full %>%
 
 # create vector of all epigenetic ageing variables 
 
-ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAgeAccelZhang_fu", "zwAgeAccelDunedin_fu")
 
 # regression for each combination of biomarker and epigenetic ageing variable 
 
@@ -634,13 +646,13 @@ prosp_results <-
   
   select(-Var1, -frm) %>% 
   rename('clock' = Var2) %>% 
-  filter(str_detect(term, "_bl"), !term %in% c("zwAA.DunedinPoAm_bl", "zwAA.Zhang.cont_bl", "zwAgeAccelGrim_bl", "zwAgeAccelPheno_bl")) %>% 
+  filter(str_detect(term, "_bl"), !term %in% c("zwAgeAccelDunedin_bl", "zwAgeAccelZhang_bl", "zwAgeAccelGrim_bl", "zwAgeAccelPheno_bl")) %>% 
   mutate(term = str_replace(term, "zwlog_", "")) %>% 
   mutate(term = sub("_.*", "", .$term)) %>% 
   mutate(term = str_to_upper(term)) %>% 
   mutate(clock = dplyr::recode(clock,
-                               zwAA.DunedinPoAm_fu = "AgeAccelDunedin",
-                               zwAA.Zhang.cont_fu = "AgeAccelZhang",
+                               zwAgeAccelDunedin_fu = "AgeAccelDunedin",
+                               zwAgeAccelZhang_fu = "AgeAccelZhang",
                                zwAgeAccelGrim_fu = "AgeAccelGrim",
                                zwAgeAccelPheno_fu = "AgeAccelPheno")) %>% 
   mutate(term2 = dplyr::recode(term,
@@ -711,7 +723,7 @@ xs <- full %>%
 
 # create vector of all epigenetic ageing variables 
 
-ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAgeAccelZhang_fu", "zwAgeAccelDunedin_fu")
 
 # regression for each combination of biomarker and epigenetic ageing variable 
 
@@ -756,8 +768,8 @@ change_results <-
   mutate(term = sub("_.*", "", .$term)) %>% 
   mutate(term = str_to_upper(term)) %>% 
   mutate(clock = dplyr::recode(clock,
-                               zwAA.DunedinPoAm_fu = "AgeAccelDunedin",
-                               zwAA.Zhang.cont_fu = "AgeAccelZhang",
+                               zwAgeAccelDunedin_fu = "AgeAccelDunedin",
+                               zwAgeAccelZhang_fu = "AgeAccelZhang",
                                zwAgeAccelGrim_fu = "AgeAccelGrim",
                                zwAgeAccelPheno_fu = "AgeAccelPheno")) %>% 
   mutate(term2 = dplyr::recode(term,
@@ -851,7 +863,7 @@ fu_cs_results %>%
   select(clock, term2, estimate, p.value) %>% 
   arrange(p.value)
 
-# proportion with p < Bonferroni threshold (0.0021)
+# proportion with FDR p < 0.05
 
 fu_cs_results %>% 
   mutate(fdr_p = p.adjust(fu_cs_results$p.value, method = "fdr")) %>% 
@@ -869,6 +881,36 @@ fu_cs_results %>%
   group_by(sig, positive) %>% 
   tally() %>% 
   mutate(percent = n/sum(n) * 100)
+
+# Result with estimate < 0
+
+fu_cs_results %>% 
+  mutate(fdr_p = p.adjust(fu_cs_results$p.value, method = "fdr")) %>% 
+  mutate(sig = if_else(fdr_p < 0.05, "Yes", "No")) %>% 
+  filter(sig == "Yes" & estimate < 0)
+
+## comparing baseline and follow-up 
+
+## comparison ##
+
+estimates <- tibble(
+  term = bl_cs_results$term2,
+  clock = bl_cs_results$clock,
+  bl = bl_cs_results$estimate,
+  fu = fu_cs_results$estimate,
+  prosp = prosp_results$estimate,
+  change = change_results$estimate
+)
+
+# largest differences from baseline to FU
+
+estimates %>% 
+  mutate(change_est = fu - bl) %>% 
+  arrange(desc(abs(change_est)))
+
+# Baseline and follow-up correlation
+
+cor(x = bl_cs_results$estimate, y = fu_cs_results$estimate)
 
 ## propsective ##
 
@@ -915,43 +957,220 @@ change_results %>%
   tally() %>% 
   mutate(percent = n/sum(n) * 100)
 
-## comparison ##
+# negative estimate
 
-estimates <- tibble(
-  term = bl_cs_results$term2,
-  clock = bl_cs_results$clock,
-  bl = bl_cs_results$estimate,
-  fu = fu_cs_results$estimate,
-  prosp = prosp_results$estimate,
-  change = change_results$estimate
-)
-
-estimates %>% 
-  mutate(dif_estimate = fu - bl) %>% 
-  summarise(mean = mean(dif_estimate),
-            sd = sd(dif_estimate))
+change_results %>% 
+  mutate(fdr_p = p.adjust(change_results$p.value, method = "fdr")) %>% 
+  mutate(sig = if_else(fdr_p < 0.05, "Yes", "No")) %>% 
+  filter(sig == "Yes" & estimate < 0)
 
 
-#### Variance explained  ####
+
+
+#### Variance explained (ridge regression) ####
 
 ### Baseline ###
 
-bl_preds <- full %>% 
+## Grim
+
+# predictors
+
+X <- as.matrix(full %>% 
   select(starts_with("zwlog_"), zwinflamm_sig_bl) %>% 
-  select(ends_with("bl"), ends_with("bl2")) %>% 
-  names() %>% 
-  paste(., collapse = " + ")
+  select(ends_with("bl"), ends_with("bl2")))
 
-ys <- c("zwAgeAccelPheno_bl", "zwAgeAccelGrim_bl", "zwAA.Zhang.cont_bl", "zwAA.DunedinPoAm_bl")
+# outcome
 
-crossing(Var1 = bl_preds, Var2 = ys) %>% 
-  mutate(frm = str_c(Var2, Var1, sep = " ~ "),
-       models = map(frm, 
-                    ~glance(lm(as.formula(.x), data=full), conf.int=T))) %>% 
-  unnest(cols = c(models)) %>% 
-  select(-Var1, -frm)
+grim <- as.matrix(full$zwAgeAccelGrim_bl)
+
+# range of lambda values
+
+lambda_seq <- 10^seq(2, -2, by = -.05)
+
+# find best lambda
+
+grim_ridge <- cv.glmnet(x = X, y = grim, family = "gaussian", lambda = lambda_seq, alpha = 0)
+
+plot(grim_ridge)
+
+best_lambda <- grim_ridge$lambda.min
+
+# best model
+
+fit_best <- glmnet(x = X, y = grim, family = "gaussian", lambda = best_lambda, alpha = 0)
+
+coef(fit_best)
+
+fit_best$dev.ratio # r squared 
+
+
+## Pheno ##
+
+# outcome
+
+pheno <- as.matrix(full$zwAgeAccelPheno_bl)
+
+# find best lambda
+
+pheno_ridge <- cv.glmnet(x = X, y = pheno, family = "gaussian", lambda = lambda_seq, alpha = 0)
+
+plot(pheno_ridge)
+
+best_lambda <- pheno_ridge$lambda.min
+
+# best model
+
+fit_best <- glmnet(x = X, y = pheno, family = "gaussian", lambda = best_lambda, alpha = 0)
+
+coef(fit_best)
+
+fit_best$dev.ratio # r squared 
+
+
+## Zhang ##
+
+# outcome
+
+zhang <- as.matrix(full$zwAgeAccelZhang_bl)
+
+# find best lambda
+
+zhang_ridge <- cv.glmnet(x = X, y = zhang, family = "gaussian", lambda = lambda_seq, alpha = 0)
+
+plot(zhang_ridge)
+
+best_lambda <- zhang_ridge$lambda.min
+
+# best model
+
+fit_best <- glmnet(x = X, y = zhang, family = "gaussian", lambda = best_lambda, alpha = 0)
+
+coef(fit_best)
+
+fit_best$dev.ratio # r squared 
+
+## Dunedin ##
+
+# outcome
+
+dunedin <- as.matrix(full$zwAgeAccelDunedin_bl)
+
+# find best lambda
+
+dunedin_ridge <- cv.glmnet(x = X, y = dunedin, family = "gaussian", lambda = lambda_seq, alpha = 0)
+
+plot(dunedin_ridge)
+
+best_lambda <- dunedin_ridge$lambda.min
+
+# best model
+
+fit_best <- glmnet(x = X, y = dunedin, family = "gaussian", lambda = best_lambda, alpha = 0)
+
+coef(fit_best)
+
+fit_best$dev.ratio # r squared 
+
+
 
 ### Follow-up ###
+
+## Grim
+
+# predictors
+
+X <- as.matrix(full %>% 
+                 select(starts_with("zwlog_"), zwinflamm_sig_fu) %>% 
+                 select(ends_with("fu"), ends_with("fu2")))
+
+# outcome
+
+grim <- as.matrix(full$zwAgeAccelGrim_fu)
+
+# find best lambda
+
+grim_ridge <- cv.glmnet(x = X, y = grim, family = "gaussian", lambda = lambda_seq, alpha = 0)
+
+plot(grim_ridge)
+
+best_lambda <- grim_ridge$lambda.min
+
+# best model
+
+fit_best <- glmnet(x = X, y = grim, family = "gaussian", lambda = best_lambda, alpha = 0)
+
+coef(fit_best)
+
+fit_best$dev.ratio # r squared 
+
+
+## Pheno ##
+
+# outcome
+
+pheno <- as.matrix(full$zwAgeAccelPheno_fu)
+
+# find best lambda
+
+pheno_ridge <- cv.glmnet(x = X, y = pheno, family = "gaussian", lambda = lambda_seq, alpha = 0)
+
+plot(pheno_ridge)
+
+best_lambda <- pheno_ridge$lambda.min
+
+# best model
+
+fit_best <- glmnet(x = X, y = pheno, family = "gaussian", lambda = best_lambda, alpha = 0)
+
+coef(fit_best)
+
+fit_best$dev.ratio # r squared 
+
+
+## Zhang ##
+
+# outcome
+
+zhang <- as.matrix(full$zwAgeAccelZhang_fu)
+
+# find best lambda
+
+zhang_ridge <- cv.glmnet(x = X, y = zhang, family = "gaussian", lambda = lambda_seq, alpha = 0)
+
+plot(zhang_ridge)
+
+best_lambda <- zhang_ridge$lambda.min
+
+# best model
+
+fit_best <- glmnet(x = X, y = zhang, family = "gaussian", lambda = best_lambda, alpha = 0)
+
+coef(fit_best)
+
+fit_best$dev.ratio # r squared 
+
+## Dunedin ##
+
+# outcome
+
+dunedin <- as.matrix(full$zwAgeAccelDunedin_fu)
+
+# find best lambda
+
+dunedin_ridge <- cv.glmnet(x = X, y = dunedin, family = "gaussian", lambda = lambda_seq, alpha = 0)
+
+plot(dunedin_ridge)
+
+best_lambda <- dunedin_ridge$lambda.min
+
+# best model
+
+fit_best <- glmnet(x = X, y = dunedin, family = "gaussian", lambda = best_lambda, alpha = 0)
+
+coef(fit_best)
+
+fit_best$dev.ratio # r squared 
+
 
 fu_preds <- full %>% 
   select(starts_with("zwlog_"), zwinflamm_sig_fu) %>% 
@@ -959,7 +1178,7 @@ fu_preds <- full %>%
   names() %>% 
   paste(., collapse = " + ")
 
-ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAgeAccelZhang_fu", "zwAgeAccelDunedin_fu")
 
 crossing(Var1 = fu_preds, Var2 = ys) %>% 
   mutate(frm = str_c(Var2, Var1, sep = " ~ "),
@@ -976,7 +1195,7 @@ bl_preds <- full %>%
   names() %>% 
   paste(., collapse = " + ")
 
-ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAgeAccelZhang_fu", "zwAgeAccelDunedin_fu")
 
 crossing(Var1 = bl_preds, Var2 = ys) %>% 
   
@@ -1017,7 +1236,7 @@ fu_preds <- full %>%
   names() %>% 
   paste(., collapse = " + ")
 
-ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAgeAccelZhang_fu", "zwAgeAccelDunedin_fu")
 
 crossing(fu_bio = fu_preds, fu_aa = ys, bl_bio = bl_preds) %>%
   mutate(bl_aa = sub("_fu", "_bl", fu_aa)) %>% 
@@ -1041,9 +1260,25 @@ crossing(fu_bio = fu_preds, fu_aa = ys, bl_bio = bl_preds) %>%
   
   filter(str_detect(frm, "_fu2"))
 
-#### Cox regression ####
 
-library(survival)
+
+bl_preds <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ")
+
+ys <- c("zwAgeAccelPheno_bl", "zwAgeAccelGrim_bl", "zwAgeAccelZhang_bl", "zwAgeAccelDunedin_bl")
+
+crossing(Var1 = bl_preds, Var2 = ys) %>% 
+  mutate(frm = str_c(Var2, Var1, sep = " ~ "),
+         models = map(frm, 
+                      ~glance(lm(as.formula(.x), data=full), conf.int=T))) %>% 
+  unnest(cols = c(models)) %>% 
+  select(-Var1, -frm)
+
+
+
 
 
 #### Supplementary Figure 1 -correlation matrix ####
@@ -1051,8 +1286,8 @@ library(survival)
 ## at follow-up 
 
 aa_vars <- full %>% 
-  select(wAA.Zhang.cont_fu, wAA.DunedinPoAm_fu, wAgeAccelGrim_fu,
-         wAgeAccelPheno_fu, wAA.Zhang.cont_bl, wAA.DunedinPoAm_fu,
+  select(wAgeAccelZhang_fu, wAgeAccelDunedin_fu, wAgeAccelGrim_fu,
+         wAgeAccelPheno_fu, wAgeAccelZhang_bl, wAgeAccelDunedin_fu,
          wAgeAccelGrim_bl, wAgeAccelPheno_bl) %>% 
   names()
 
@@ -1076,8 +1311,8 @@ plot_data <- cors_spearman(cor_dat) %>%
   mutate(measure2 = sub("_.*", "", .$measure2)) %>% 
   mutate(across(contains("measure"), str_to_upper)) %>% 
   mutate(across(contains("measure"), ~ dplyr::recode(.,
-                                                     WAA.ZHANG.CONT = "AgeAccelZhang",
-                                                     WAA.DUNEDINPOAM = "AgeAccelDunedin",
+                                                     WAGEACCELZHANG = "AgeAccelZhang",
+                                                     WAGEACCELDUNEDIN = "AgeAccelDunedin",
                                                      WAGEACCELGRIM = "AgeAccelGrim",
                                                      WAGEACCELPHENO = "AgeAccelPheno",
                                                      WINFLAMM = "Inflammaging signature",
@@ -1128,7 +1363,7 @@ plot_data %>%
         axis.text.y = element_text(size = 10))
 
 ggsave("correlation heatmap.png", device = "png", dpi = 450,
-       width = 12, height = 10)
+       width = 12, height = 8)
 
 #### Supplementary Figure 2 - age correlations ####
 
@@ -1196,7 +1431,7 @@ xs <- full %>%
 
 # create vector of all epigenetic ageing variables 
 
-ys <- c("zwAgeAccelPheno_bl", "zwAgeAccelGrim_bl", "zwAA.Zhang.cont_bl", "zwAA.DunedinPoAm_bl")
+ys <- c("zwAgeAccelPheno_bl", "zwAgeAccelGrim_bl", "zwAgeAccelZhang_bl", "zwAgeAccelDunedin_bl")
 
 # regression for each combination of biomarker and AgeAccel variable 
 
@@ -1223,8 +1458,8 @@ bl_sf3 <-
   mutate(term = sub("_.*", "", .$term)) %>% 
   mutate(term = str_to_upper(term)) %>% 
   mutate(clock = dplyr::recode(clock,
-                               zwAA.DunedinPoAm_bl = "AgeAccelDunedin",
-                               zwAA.Zhang.cont_bl = "AgeAccelZhang",
+                               zwAgeAccelDunedin_bl = "AgeAccelDunedin",
+                               zwAgeAccelZhang_bl = "AgeAccelZhang",
                                zwAgeAccelGrim_bl = "AgeAccelGrim",
                                zwAgeAccelPheno_bl = "AgeAccelPheno")) %>% 
   mutate(term2 = dplyr::recode(term,
@@ -1302,7 +1537,7 @@ xs <- full %>%
 
 # create vector of all epigenetic ageing variables 
 
-ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAgeAccelZhang_fu", "zwAgeAccelDunedin_fu")
 
 # regression for each combination of biomarker and epigenetic ageing variable 
 
@@ -1319,8 +1554,8 @@ fu_cs_results <- crossing(Var1 = xs, Var2 = ys) %>%
   mutate(term = sub("_.*", "", .$term)) %>% 
   mutate(term = str_to_upper(term)) %>% 
   mutate(clock = dplyr::recode(clock,
-                               zwAA.DunedinPoAm_fu = "AgeAccelDunedin",
-                               zwAA.Zhang.cont_fu = "AgeAccelZhang",
+                               zwAgeAccelDunedin_fu = "AgeAccelDunedin",
+                               zwAgeAccelZhang_fu = "AgeAccelZhang",
                                zwAgeAccelGrim_fu = "AgeAccelGrim",
                                zwAgeAccelPheno_fu = "AgeAccelPheno")) %>% 
   mutate(term2 = dplyr::recode(term,
@@ -1413,7 +1648,7 @@ xs <- full %>%
 
 # create vector of all epigenetic ageing variables 
 
-ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAgeAccelZhang_fu", "zwAgeAccelDunedin_fu")
 
 # regression for each combination of biomarker and epigenetic ageing variable 
 
@@ -1443,13 +1678,13 @@ prosp_results <-
   
   select(-Var1, -frm) %>% 
   rename('clock' = Var2) %>% 
-  filter(str_detect(term, "_bl"), !term %in% c("zwAA.DunedinPoAm_bl", "zwAA.Zhang.cont_bl", "zwAgeAccelGrim_bl", "zwAgeAccelPheno_bl")) %>% 
+  filter(str_detect(term, "_bl"), !term %in% c("zwAgeAccelDunedin_bl", "zwAgeAccelZhang_bl", "zwAgeAccelGrim_bl", "zwAgeAccelPheno_bl")) %>% 
   mutate(term = str_replace(term, "zwlog_", "")) %>% 
   mutate(term = sub("_.*", "", .$term)) %>% 
   mutate(term = str_to_upper(term)) %>% 
   mutate(clock = dplyr::recode(clock,
-                               zwAA.DunedinPoAm_fu = "AgeAccelDunedin",
-                               zwAA.Zhang.cont_fu = "AgeAccelZhang",
+                               zwAgeAccelDunedin_fu = "AgeAccelDunedin",
+                               zwAgeAccelZhang_fu = "AgeAccelZhang",
                                zwAgeAccelGrim_fu = "AgeAccelGrim",
                                zwAgeAccelPheno_fu = "AgeAccelPheno")) %>% 
   mutate(term2 = dplyr::recode(term,
@@ -1534,7 +1769,7 @@ xs <- full %>%
 
 # create vector of all epigenetic ageing variables 
 
-ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAA.Zhang.cont_fu", "zwAA.DunedinPoAm_fu")
+ys <- c("zwAgeAccelPheno_fu", "zwAgeAccelGrim_fu", "zwAgeAccelZhang_fu", "zwAgeAccelDunedin_fu")
 
 # regression for each combination of biomarker and epigenetic ageing variable 
 
@@ -1579,8 +1814,8 @@ change_results <-
   mutate(term = sub("_.*", "", .$term)) %>% 
   mutate(term = str_to_upper(term)) %>% 
   mutate(clock = dplyr::recode(clock,
-                               zwAA.DunedinPoAm_fu = "AgeAccelDunedin",
-                               zwAA.Zhang.cont_fu = "AgeAccelZhang",
+                               zwAgeAccelDunedin_fu = "AgeAccelDunedin",
+                               zwAgeAccelZhang_fu = "AgeAccelZhang",
                                zwAgeAccelGrim_fu = "AgeAccelGrim",
                                zwAgeAccelPheno_fu = "AgeAccelPheno")) %>% 
   mutate(term2 = dplyr::recode(term,
