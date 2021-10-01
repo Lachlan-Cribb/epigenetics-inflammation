@@ -1,5 +1,4 @@
 # Load the required packages
-
 library(tidyverse)
 library(flextable)
 library(psych)
@@ -494,8 +493,12 @@ order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
             "Xanthurenic acid", "Anthranilic acid", "3-Hydroxyanthranilic acid",
             "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
 
+
 bl_cs_results %>% 
-  ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
+  mutate(fdr_p = p.adjust(p.value, method = "fdr")) %>% 
+  ggplot(aes(x = estimate, 
+             y = factor(term2, levels = rev(order)),
+             colour = I(ifelse(fdr_p < 0.05, "darkorange4", "grey20")))) +
   geom_vline(xintercept = 0) +
   geom_pointrange(aes(xmin = conf.low,
                       xmax = conf.high),
@@ -503,13 +506,13 @@ bl_cs_results %>%
   facet_wrap(~ clock, nrow = 1) +
   theme_stata() +
   theme(axis.text.y = element_text(angle = 0)) +
-  labs(x = "Estimate, 95% CI", y = "") +
+  labs(x = "Coefficient, 95% CI", y = "") +
   xlim(c(-0.4, 0.4)) +
   theme(panel.spacing.x = unit(1, "lines"))
 
 
-ggsave("Baseline forest.png", device = "png",
-       height = 7, width = 10)
+ggsave("Baseline forest v2.png", device = "png",
+       height = 6, width = 9)
 
 
 
@@ -585,7 +588,10 @@ order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
             "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
 
 fu_cs_results %>% 
-  ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
+  mutate(fdr_p = p.adjust(p.value, method = "fdr")) %>% 
+  ggplot(aes(x = estimate, 
+             y = factor(term2, levels = rev(order)),
+             colour = I(ifelse(fdr_p < 0.05, "darkorange4", "grey20")))) +
   geom_vline(xintercept = 0) +
   geom_pointrange(aes(xmin = conf.low,
                       xmax = conf.high),
@@ -598,8 +604,8 @@ fu_cs_results %>%
   theme(panel.spacing.x = unit(1, "lines"))
 
 
-ggsave("follow-up forest.png", device = "png",
-       height = 7, width = 10)
+ggsave("follow-up forest v2.png", device = "png",
+       height = 6, width = 9)
 
 
 #### Figure 3 - Prospective associations #### 
@@ -692,7 +698,10 @@ order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
             "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
 
 prosp_results %>% 
-  ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
+  mutate(fdr_p = p.adjust(p.value, method = "fdr")) %>% 
+  ggplot(aes(x = estimate, 
+             y = factor(term2, levels = rev(order)),
+             colour = I(ifelse(fdr_p < 0.05, "darkorange4", "grey20")))) +
   geom_vline(xintercept = 0) +
   geom_pointrange(aes(xmin = conf.low,
                       xmax = conf.high),
@@ -704,9 +713,8 @@ prosp_results %>%
   xlim(c(-0.4, 0.4)) +
   theme(panel.spacing.x = unit(1, "lines"))
 
-
-ggsave("Prospective forest.png", device = "png",
-       height = 7, width = 10)
+ggsave("Prospective forest v2.png", device = "png",
+       height = 6, width = 9)
 
 
 #### Figure 4 - Change over time ####
@@ -809,7 +817,10 @@ order <-  c("Inflammaging signature", "Neopterin", "C-reactive protein",
             "Piconilic acid", "Quinolinic acid", "KTr", "PAr", "HK:XA")
 
 change_results %>% 
-  ggplot(aes(x = estimate, y = factor(term2, levels = rev(order)))) +
+  mutate(fdr_p = p.adjust(p.value, method = "fdr")) %>% 
+  ggplot(aes(x = estimate, 
+             y = factor(term2, levels = rev(order)),
+             colour = I(ifelse(fdr_p < 0.05, "darkorange4", "grey20")))) +
   geom_vline(xintercept = 0) +
   geom_pointrange(aes(xmin = conf.low,
                       xmax = conf.high),
@@ -821,8 +832,8 @@ change_results %>%
   xlim(c(-0.4, 0.4)) +
   theme(panel.spacing.x = unit(1, "lines"))
 
-ggsave("Longitudinal forest.png", device = "png",
-       height = 7, width = 10)
+ggsave("Longitudinal forest v2.png", device = "png",
+       height = 6, width = 9)
 
 
 #### Comparing estimates ####
@@ -832,11 +843,10 @@ ggsave("Longitudinal forest.png", device = "png",
 # strongest results 
 
 bl_cs_results %>% 
-  select(clock, term2, estimate, p.value) %>% 
+  select(clock, term2, estimate, p.value, conf.low, conf.high) %>% 
   arrange(p.value)
 
 # proportion with FDR p < 0.05
-
 
 bl_cs_results %>% 
   mutate(fdr_p = p.adjust(bl_cs_results$p.value, method = "fdr")) %>% 
@@ -860,7 +870,7 @@ bl_cs_results %>%
 # strongest results 
 
 fu_cs_results %>% 
-  select(clock, term2, estimate, p.value) %>% 
+  select(clock, term2, estimate, p.value, conf.low, conf.high) %>% 
   arrange(p.value)
 
 # proportion with FDR p < 0.05
@@ -917,7 +927,7 @@ cor(x = bl_cs_results$estimate, y = fu_cs_results$estimate)
 # strongest results 
 
 prosp_results %>% 
-  select(clock, term2, estimate, p.value) %>% 
+  select(clock, term2, estimate, p.value, conf.low, conf.high) %>% 
   arrange(p.value)
 
 # proportion with p < Bonferroni threshold (0.0021)
@@ -935,7 +945,7 @@ prosp_results %>%
 # strongest results 
 
 change_results %>% 
-  select(clock, term2, estimate, p.value) %>% 
+  select(clock, term2, estimate, p.value, conf.low, conf.high) %>% 
   arrange(p.value)
 
 # proportion with p < Bonferroni threshold (0.0021)
@@ -967,210 +977,273 @@ change_results %>%
 
 
 
-#### Variance explained (ridge regression) ####
-
-### Baseline ###
+#### Baseline Variance explained (Bayesian horseshoe regression) ####
 
 ## Grim
 
-# predictors
+# formula
 
-X <- as.matrix(full %>% 
+form1 <- full %>% 
   select(starts_with("zwlog_"), zwinflamm_sig_bl) %>% 
-  select(ends_with("bl"), ends_with("bl2")))
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ") %>% 
+  paste("zwAgeAccelGrim_bl ~", .)
 
-# outcome
+# fit model
 
-grim <- as.matrix(full$zwAgeAccelGrim_bl)
+bl_grim <- 
+  brm(form1,
+      data = full,
+      prior = c(prior(horseshoe(df = 3, par_ratio = 0.2)),
+                prior(normal(0,0.5), class = "Intercept")),
+      iter = 4000,
+      warmup = 1000,
+      chains = 4, cores = 4,
+      control = list(adapt_delta = 0.99, max_treedepth = 15),
+      file = "grim_bl_hs",
+      backend = "cmdstanr")
 
-# range of lambda values
+# model results
 
-lambda_seq <- 10^seq(2, -2, by = -.05)
+summary(bl_grim)
 
-# find best lambda
+bl_grim_R2 <- loo_R2(bl_grim) # LOOCV R squared 
 
-grim_ridge <- cv.glmnet(x = X, y = grim, family = "gaussian", lambda = lambda_seq, alpha = 0)
+bl_grim_R2
 
-plot(grim_ridge)
+## Pheno
 
-best_lambda <- grim_ridge$lambda.min
+# formula
 
-# best model
+form2 <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ") %>% 
+  paste("zwAgeAccelPheno_bl ~", .)
 
-fit_best <- glmnet(x = X, y = grim, family = "gaussian", lambda = best_lambda, alpha = 0)
+# fit model
 
-coef(fit_best)
+bl_pheno <- 
+  brm(form2,
+      data = full,
+      prior = c(prior(horseshoe(df = 3, par_ratio = 0.2)),
+                prior(normal(0,0.5), class = "Intercept")),
+      iter = 4000,
+      warmup = 1000,
+      chains = 4, cores = 4,
+      control = list(adapt_delta = 0.99, max_treedepth = 15),
+      file = "pheno_bl_hs",
+      backend = "cmdstanr")
 
-fit_best$dev.ratio # r squared 
+# model results
 
+summary(bl_pheno)
 
-## Pheno ##
+bl_pheno_R2 <- loo_R2(bl_pheno) # LOOCV R squared 
 
-# outcome
+bl_pheno_R2
 
-pheno <- as.matrix(full$zwAgeAccelPheno_bl)
+## Zhang
 
-# find best lambda
+# formula
 
-pheno_ridge <- cv.glmnet(x = X, y = pheno, family = "gaussian", lambda = lambda_seq, alpha = 0)
+form3 <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ") %>% 
+  paste("zwAgeAccelZhang_bl ~", .)
 
-plot(pheno_ridge)
+# fit model
 
-best_lambda <- pheno_ridge$lambda.min
+bl_zhang <- 
+  brm(form3,
+      data = full,
+      prior = c(prior(horseshoe(df = 3, par_ratio = 0.2)),
+                prior(normal(0,0.5), class = "Intercept")),
+      iter = 4000,
+      warmup = 1000,
+      chains = 4, cores = 4,
+      control = list(adapt_delta = 0.99, max_treedepth = 15),
+      file = "zhang_bl_hs",
+      backend = "cmdstanr")
 
-# best model
+# model results
 
-fit_best <- glmnet(x = X, y = pheno, family = "gaussian", lambda = best_lambda, alpha = 0)
+summary(bl_zhang)
 
-coef(fit_best)
+bl_zhang_R2 <- loo_R2(bl_zhang) # LOOCV R squared 
 
-fit_best$dev.ratio # r squared 
+bl_zhang_R2
 
+## Dunedin
 
-## Zhang ##
+# formula
 
-# outcome
+form4 <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_bl) %>% 
+  select(ends_with("bl"), ends_with("bl2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ") %>% 
+  paste("zwAgeAccelDunedin_bl ~", .)
 
-zhang <- as.matrix(full$zwAgeAccelZhang_bl)
+# fit model
 
-# find best lambda
+bl_dunedin <- 
+  brm(form4,
+      data = full,
+      prior = c(prior(horseshoe(df = 3, par_ratio = 0.2)),
+                prior(normal(0,0.5), class = "Intercept")),
+      iter = 4000,
+      warmup = 1000,
+      chains = 4, cores = 4,
+      control = list(adapt_delta = 0.99, max_treedepth = 15),
+      file = "dunedin_bl_hs",
+      backend = "cmdstanr")
 
-zhang_ridge <- cv.glmnet(x = X, y = zhang, family = "gaussian", lambda = lambda_seq, alpha = 0)
+# model results
 
-plot(zhang_ridge)
+summary(bl_dunedin)
 
-best_lambda <- zhang_ridge$lambda.min
+bl_dunedin_R2 <- loo_R2(bl_dunedin) # LOOCV R squared 
 
-# best model
+bl_dunedin_R2
 
-fit_best <- glmnet(x = X, y = zhang, family = "gaussian", lambda = best_lambda, alpha = 0)
-
-coef(fit_best)
-
-fit_best$dev.ratio # r squared 
-
-## Dunedin ##
-
-# outcome
-
-dunedin <- as.matrix(full$zwAgeAccelDunedin_bl)
-
-# find best lambda
-
-dunedin_ridge <- cv.glmnet(x = X, y = dunedin, family = "gaussian", lambda = lambda_seq, alpha = 0)
-
-plot(dunedin_ridge)
-
-best_lambda <- dunedin_ridge$lambda.min
-
-# best model
-
-fit_best <- glmnet(x = X, y = dunedin, family = "gaussian", lambda = best_lambda, alpha = 0)
-
-coef(fit_best)
-
-fit_best$dev.ratio # r squared 
-
-
-
-### Follow-up ###
+#### follow-up variance explained ####
 
 ## Grim
 
-# predictors
+# formula
 
-X <- as.matrix(full %>% 
-                 select(starts_with("zwlog_"), zwinflamm_sig_fu) %>% 
-                 select(ends_with("fu"), ends_with("fu2")))
+form1 <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_bl) %>% 
+  select(ends_with("fu"), ends_with("fu2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ") %>% 
+  paste("zwAgeAccelGrim_fu ~", .)
 
-# outcome
+# fit model
 
-grim <- as.matrix(full$zwAgeAccelGrim_fu)
+fu_grim <- 
+  brm(form1,
+      data = full,
+      prior = c(prior(horseshoe(df = 3, par_ratio = 0.2)),
+                prior(normal(0,0.5), class = "Intercept")),
+      iter = 4000,
+      warmup = 1000,
+      chains = 4, cores = 4,
+      control = list(adapt_delta = 0.999, max_treedepth = 15),
+      file = "grim_fu_hs",
+      backend = "cmdstanr")
 
-# find best lambda
+# model results
 
-grim_ridge <- cv.glmnet(x = X, y = grim, family = "gaussian", lambda = lambda_seq, alpha = 0)
+summary(fu_grim)
 
-plot(grim_ridge)
+fu_grim_R2 <- loo_R2(fu_grim) # LOOCV R squared 
 
-best_lambda <- grim_ridge$lambda.min
+fu_grim_R2
 
-# best model
+## Pheno
 
-fit_best <- glmnet(x = X, y = grim, family = "gaussian", lambda = best_lambda, alpha = 0)
+# formula
 
-coef(fit_best)
+form2 <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_fu) %>% 
+  select(ends_with("fu"), ends_with("fu2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ") %>% 
+  paste("zwAgeAccelPheno_fu ~", .)
 
-fit_best$dev.ratio # r squared 
+# fit model
 
+fu_pheno <- 
+  brm(form2,
+      data = full,
+      prior = c(prior(horseshoe(df = 3, par_ratio = 0.2)),
+                prior(normal(0,0.5), class = "Intercept")),
+      iter = 4000,
+      warmup = 1000,
+      chains = 4, cores = 4,
+      control = list(adapt_delta = 0.99, max_treedepth = 15),
+      file = "pheno_fu_hs",
+      backend = "cmdstanr")
 
-## Pheno ##
+# model results
 
-# outcome
+summary(fu_pheno)
 
-pheno <- as.matrix(full$zwAgeAccelPheno_fu)
+fu_pheno_R2 <- loo_R2(fu_pheno) # LOOCV R squared 
 
-# find best lambda
+fu_pheno_R2
 
-pheno_ridge <- cv.glmnet(x = X, y = pheno, family = "gaussian", lambda = lambda_seq, alpha = 0)
+## Zhang
 
-plot(pheno_ridge)
+# formula
 
-best_lambda <- pheno_ridge$lambda.min
+form3 <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_fu) %>% 
+  select(ends_with("fu"), ends_with("fu2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ") %>% 
+  paste("zwAgeAccelZhang_fu ~", .)
 
-# best model
+# fit model
 
-fit_best <- glmnet(x = X, y = pheno, family = "gaussian", lambda = best_lambda, alpha = 0)
+fu_zhang <- 
+  brm(form3,
+      data = full,
+      prior = c(prior(horseshoe(df = 3, par_ratio = 0.2)),
+                prior(normal(0,0.5), class = "Intercept")),
+      iter = 4000,
+      warmup = 1000,
+      chains = 4, cores = 4,
+      control = list(adapt_delta = 0.99, max_treedepth = 15),
+      file = "zhang_fu_hs",
+      backend = "cmdstanr")
 
-coef(fit_best)
+# model results
 
-fit_best$dev.ratio # r squared 
+summary(fu_zhang)
 
+fu_zhang_R2 <- loo_R2(fu_zhang) # LOOCV R squared 
 
-## Zhang ##
+fu_zhang_R2
 
-# outcome
+## Dunedin
 
-zhang <- as.matrix(full$zwAgeAccelZhang_fu)
+# formula
 
-# find best lambda
+form4 <- full %>% 
+  select(starts_with("zwlog_"), zwinflamm_sig_fu) %>% 
+  select(ends_with("fu"), ends_with("fu2")) %>% 
+  names() %>% 
+  paste(., collapse = " + ") %>% 
+  paste("zwAgeAccelDunedin_fu ~", .)
 
-zhang_ridge <- cv.glmnet(x = X, y = zhang, family = "gaussian", lambda = lambda_seq, alpha = 0)
+# fit model
 
-plot(zhang_ridge)
+fu_dunedin <- 
+  brm(form4,
+      data = full,
+      prior = c(prior(horseshoe(df = 3, par_ratio = 0.2)),
+                prior(normal(0,0.5), class = "Intercept")),
+      iter = 4000,
+      warmup = 1000,
+      chains = 4, cores = 4,
+      control = list(adapt_delta = 0.99, max_treedepth = 15),
+      file = "dunedin_fu_hs",
+      backend = "cmdstanr")
 
-best_lambda <- zhang_ridge$lambda.min
+# model results
 
-# best model
+summary(fu_dunedin)
 
-fit_best <- glmnet(x = X, y = zhang, family = "gaussian", lambda = best_lambda, alpha = 0)
+fu_dunedin_R2 <- loo_R2(fu_dunedin) # LOOCV R squared 
 
-coef(fit_best)
-
-fit_best$dev.ratio # r squared 
-
-## Dunedin ##
-
-# outcome
-
-dunedin <- as.matrix(full$zwAgeAccelDunedin_fu)
-
-# find best lambda
-
-dunedin_ridge <- cv.glmnet(x = X, y = dunedin, family = "gaussian", lambda = lambda_seq, alpha = 0)
-
-plot(dunedin_ridge)
-
-best_lambda <- dunedin_ridge$lambda.min
-
-# best model
-
-fit_best <- glmnet(x = X, y = dunedin, family = "gaussian", lambda = best_lambda, alpha = 0)
-
-coef(fit_best)
-
-fit_best$dev.ratio # r squared 
-
+fu_dunedin_R2
 
 
 #### Supplementary Figure 1 -correlation matrix ####
@@ -1263,12 +1336,15 @@ ggsave("correlation heatmap.png", device = "png", dpi = 450,
 
 ann_text <- data.frame(
   label = c("r = 0.22", "r = 0.85", "r = 0.74", "r = 0.41", "r = 0.50"),
-  variable = c("DunedinPoAm", "GrimAge","PhenoAge","Zhang", "Inflammaging"),
+  variable = c("DunedinPoAm", "GrimAge","PhenoAge","Zhang", "Inflammaging signature"),
   x = rep(-2, 5),
   y = rep(88, 5)
 )
 
 full %>% 
+  mutate(across(c("score.Zhang.cont_fu", "DunedinPoAm_fu", 
+                "DNAmGrimAge_fu", "DNAmPhenoAge_fu", "inflamm_sig_fu"), 
+                winsorise, .names = "w{.col}")) %>% 
   mutate(across(c("wscore.Zhang.cont_fu", "wDunedinPoAm_fu", 
                   "wDNAmGrimAge_fu", "wDNAmPhenoAge_fu", "winflamm_sig_fu"), scale)) %>% 
   pivot_longer(cols = c("wscore.Zhang.cont_fu", "wDunedinPoAm_fu", 
@@ -1279,14 +1355,14 @@ full %>%
                                   wDunedinPoAm_fu = "DunedinPoAm",
                                   wDNAmGrimAge_fu = "GrimAge",
                                   wDNAmPhenoAge_fu = "PhenoAge",
-                                  winflamm_sig_fu = "Inflammaging")) %>%
+                                  winflamm_sig_fu = "Inflammaging signature")) %>%
   ggplot(aes(x = ageaccel, y = age_fu_correct)) +
   geom_point() + geom_smooth(method = "lm", colour = "darkblue") + 
   facet_wrap(~ factor(variable,
                       levels = c("Zhang", "DunedinPoAm",
                                  "GrimAge", "PhenoAge",
-                                 "Inflammaging"))) +
-  labs(x = "Epigenetic ageing/inflammaging biomarker (scaled)", y = "Chronological age") +
+                                 "Inflammaging signature"))) +
+  labs(x = "Epigenetic ageing/inflammaging biomarker (z score)", y = "Chronological age") +
   theme_stata() +
   geom_text(
     data    = ann_text,
@@ -1294,10 +1370,9 @@ full %>%
   )
 
 ggsave("clock age correlation.png", device = "png",
-       width = 7, height = 5)
+       width = 7, height = 6)
 
-bl_cs_results %>% 
-  filter(term == "CRP")
+
 #### Supplementary Figures 3-7 - Sensitivity confounders ####
 
 full$cigst_cde_imp_bl <- as.factor(full$cigst_cde_imp_bl)
